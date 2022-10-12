@@ -1,13 +1,10 @@
-#[macro_use]
 extern crate tokio;
 
 use dotenv::dotenv;
 use rand::random;
 use serenity::async_trait;
-use serenity::model::prelude::{component, UserId};
 use serenity::utils::MessageBuilder;
 use serenity::{
-    builder::CreateActionRow,
     client::EventHandler,
     model::application::{
         command::Command, interaction::Interaction, interaction::InteractionResponseType,
@@ -17,9 +14,10 @@ use serenity::{
     Client,
 };
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
-enum Choices {
+#[derive(PartialEq, Eq)]
+enum Choice {
+    None,
     Rock,
     Paper,
     Scissors,
@@ -32,14 +30,16 @@ struct Game {
     started: bool,
     id: String,
     players: HashSet<u64>,
+    choices: HashMap<i64,Choice>
 }
 
 impl Game {
     fn new(id: String) -> Self {
         Game {
             started: false,
-            id: id,
+            id,
             players: HashSet::new(),
+            choices: HashMap::new()
         }
     }
 }
@@ -54,26 +54,18 @@ trait New {
 
 impl New for Handler {
     fn new() -> Self {
-        return Handler {
+        Handler {
             games: Mutex::new(HashMap::new()),
-        };
+        }
     }
 }
 
 impl Handler {
     fn start_game(&self, id: String) {
-        match self.games.lock().as_deref_mut() {
-            Ok(games) => {
-                match games.get_mut(&id) {
-                    Some(game) => {
-                        game.started = true;
-                        ()
-                    }
-                    None => (),
-                }
-                ()
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            if let Some(game) = games.get_mut(&id) {
+                game.started = true;
             }
-            Err(_) => (),
         }
     }
     fn get_player_count(&self, id: &String) -> usize {
@@ -86,7 +78,9 @@ impl Handler {
         }
     }
     fn add_player(&self, id: String, user_id: u64) -> bool {
-        if self.get_player_count(&id) < 2 {return false;}
+        if self.get_player_count(&id) < 2 {
+            return false;
+        }
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
                 if let Some(game) = games.get_mut(&id) {
@@ -192,22 +186,20 @@ impl EventHandler for Handler {
                                             })
                                         })
                                 })
-                        } else {
-                            if self.add_player(id, user_id) {
-                                response
-                                    .kind(InteractionResponseType::UpdateMessage)
-                                    .interaction_response_data(|message| {
-                                        message.content({
-                                            MessageBuilder::new()
-                                                .push(content)
-                                                .push("\n")
-                                                .mention(&component.user)
-                                                .build()
-                                        })
+                        } else if self.add_player(id, user_id) {
+                            response
+                                .kind(InteractionResponseType::UpdateMessage)
+                                .interaction_response_data(|message| {
+                                    message.content({
+                                        MessageBuilder::new()
+                                            .push(content)
+                                            .push("\n")
+                                            .mention(&component.user)
+                                            .build()
                                     })
-                            } else {
-                                response.kind(InteractionResponseType::UpdateMessage)
-                            }
+                                })
+                        } else {
+                            response.kind(InteractionResponseType::UpdateMessage)
                         }
                     })
                     .await
@@ -221,7 +213,7 @@ impl EventHandler for Handler {
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
-        let commands = Command::create_global_application_command(&ctx.http, |command| {
+        let _commands = Command::create_global_application_command(&ctx.http, |command| {
             command
                 .name("rockpaperscissors")
                 .description("Start a new Game")
