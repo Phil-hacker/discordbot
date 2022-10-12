@@ -59,6 +59,9 @@ impl New for Handler {
 }
 
 impl Handler {
+    fn start_game(&self, id: String) {
+
+    }
     fn add_player(&self, id: String, user_id: u64) -> bool {
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
@@ -98,7 +101,7 @@ impl EventHandler for Handler {
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
                                 .interaction_response_data(|message| match self.new_game() {
                                     Some(id) => {
-                                        message.content("React to join").components(|components| {
+                                        message.content("React to join\nPlayers:\n").components(|components| {
                                             components.create_action_row(|row| {
                                                 row.create_button(|button| {
                                                     button.label("Join").custom_id(&id)
@@ -121,19 +124,30 @@ impl EventHandler for Handler {
             Interaction::MessageComponent(component) => {
                 let user_id=*component.user.id.as_u64();
                 let id=component.data.custom_id.clone();
+                let content = component.message.content.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         if id.contains("start") {
-                            response.kind(InteractionResponseType::UpdateMessage)
+                            self.start_game(id);
+                            response
+                            .kind(InteractionResponseType::UpdateMessage)
+                            .interaction_response_data(|message| {
+                                message.content({
+                                    MessageBuilder::new()
+                                        .push("Choose your weapon")
+                                        .build()
+                                })
+                            })
                         }else {
                         if self.add_player(id,user_id) {
                             response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
+                                .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
                                     message.content({
                                         MessageBuilder::new()
+                                            .push(content)
+                                            .push("\n")
                                             .mention(&component.user)
-                                            .push(" joined the Game")
                                             .build()
                                     })
                                 })
