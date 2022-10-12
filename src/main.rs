@@ -64,13 +64,29 @@ impl Handler {
     fn start_game(&self, id: String) {
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
-                games.get_mut(&id).unwrap().started = true;
+                match games.get_mut(&id) {
+                    Some(game) => {
+                        game.started = true;
+                        ()
+                    }
+                    None => (),
+                }
                 ()
             }
             Err(_) => (),
         }
     }
+    fn get_player_count(&self, id: &String) -> usize {
+        match self.games.lock().as_deref_mut() {
+            Ok(games) => match games.get(id) {
+                Some(game) => game.players.len(),
+                None => 0,
+            },
+            Err(_) => 0,
+        }
+    }
     fn add_player(&self, id: String, user_id: u64) -> bool {
+        if self.get_player_count(&id) < 2 {return false;}
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
                 if let Some(game) = games.get_mut(&id) {
@@ -108,18 +124,20 @@ impl EventHandler for Handler {
                             response
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
                                 .interaction_response_data(|message| match self.new_game() {
-                                    Some(id) => {
-                                        message.content("React to join\nPlayers:\n").components(|components| {
+                                    Some(id) => message
+                                        .content("React to join\nPlayers:\n")
+                                        .components(|components| {
                                             components.create_action_row(|row| {
                                                 row.create_button(|button| {
                                                     button.label("Join").custom_id(&id)
                                                 });
                                                 row.create_button(|button| {
-                                                    button.label("Start").custom_id(&format!("start{}",id))
+                                                    button
+                                                        .label("Start")
+                                                        .custom_id(&format!("start{}", id))
                                                 })
                                             })
-                                        })
-                                    }
+                                        }),
                                     None => message.content("Ein Fehler ist aufgetreten"),
                                 })
                         })
@@ -130,60 +148,67 @@ impl EventHandler for Handler {
                 }
             }
             Interaction::MessageComponent(component) => {
-                let user_id=*component.user.id.as_u64();
-                let id=component.data.custom_id.clone();
+                let user_id = *component.user.id.as_u64();
+                let id = component.data.custom_id.clone();
                 let content = component.message.content.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         if id.contains("start") {
                             self.start_game(id.clone().split_off(5));
                             response
-                            .kind(InteractionResponseType::UpdateMessage)
-                            .interaction_response_data(|message| {
-                                message
-                                .content({
-                                    MessageBuilder::new()
-                                        .push("Choose your weapon")
-                                        .build()
-                                })
-                                .components(|components| {
-                                    components.create_action_row(|row| {
-                                        row.create_button(|button| {
-                                            button.label("Rock").custom_id(&format!("r{}",id))
-                                        });
-                                        row.create_button(|button| {
-                                            button.label("Paper").custom_id(&format!("p{}",id))
-                                        });
-                                        row.create_button(|button| {
-                                            button.label("Scissors").custom_id(&format!("s{}",id))
-                                        });
-                                        row.create_button(|button| {
-                                            button.label("Spock").custom_id(&format!("S{}",id))
-                                        });
-                                        row.create_button(|button| {
-                                            button.label("Lizard").custom_id(&format!("l{}",id))
-                                        })
-                                    })
-                                })
-
-                            })
-                        }else {
-                        if self.add_player(id,user_id) {
-                            response
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
-                                    message.content({
-                                        MessageBuilder::new()
-                                            .push(content)
-                                            .push("\n")
-                                            .mention(&component.user)
-                                            .build()
-                                    })
+                                    message
+                                        .content({
+                                            MessageBuilder::new().push("Choose your weapon").build()
+                                        })
+                                        .components(|components| {
+                                            components.create_action_row(|row| {
+                                                row.create_button(|button| {
+                                                    button
+                                                        .label("Rock")
+                                                        .custom_id(&format!("#r{}", id))
+                                                });
+                                                row.create_button(|button| {
+                                                    button
+                                                        .label("Paper")
+                                                        .custom_id(&format!("#p{}", id))
+                                                });
+                                                row.create_button(|button| {
+                                                    button
+                                                        .label("Scissors")
+                                                        .custom_id(&format!("#s{}", id))
+                                                });
+                                                row.create_button(|button| {
+                                                    button
+                                                        .label("Spock")
+                                                        .custom_id(&format!("#S{}", id))
+                                                });
+                                                row.create_button(|button| {
+                                                    button
+                                                        .label("Lizard")
+                                                        .custom_id(&format!("#l{}", id))
+                                                })
+                                            })
+                                        })
                                 })
                         } else {
-                            response.kind(InteractionResponseType::UpdateMessage)
+                            if self.add_player(id, user_id) {
+                                response
+                                    .kind(InteractionResponseType::UpdateMessage)
+                                    .interaction_response_data(|message| {
+                                        message.content({
+                                            MessageBuilder::new()
+                                                .push(content)
+                                                .push("\n")
+                                                .mention(&component.user)
+                                                .build()
+                                        })
+                                    })
+                            } else {
+                                response.kind(InteractionResponseType::UpdateMessage)
+                            }
                         }
-                    }
                     })
                     .await
                 {
