@@ -29,6 +29,7 @@ enum Choices {
 
 #[derive(PartialEq, Eq)]
 struct Game {
+    started: bool,
     id: String,
     players: HashSet<u64>,
 }
@@ -36,6 +37,7 @@ struct Game {
 impl Game {
     fn new(id: String) -> Self {
         Game {
+            started: false,
             id: id,
             players: HashSet::new(),
         }
@@ -60,13 +62,19 @@ impl New for Handler {
 
 impl Handler {
     fn start_game(&self, id: String) {
-
+        match self.games.lock().as_deref_mut() {
+            Ok(games) => {
+                games.get_mut(&id).unwrap().started = true;
+                ()
+            }
+            Err(_) => (),
+        }
     }
     fn add_player(&self, id: String, user_id: u64) -> bool {
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
                 if let Some(game) = games.get_mut(&id) {
-                    if !game.players.contains(&user_id) {
+                    if !game.players.contains(&user_id) && !game.started {
                         game.players.insert(user_id);
                         return true;
                     }
@@ -128,15 +136,36 @@ impl EventHandler for Handler {
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         if id.contains("start") {
-                            self.start_game(id);
+                            self.start_game(id.clone().split_off(5));
                             response
                             .kind(InteractionResponseType::UpdateMessage)
                             .interaction_response_data(|message| {
-                                message.content({
+                                message
+                                .content({
                                     MessageBuilder::new()
                                         .push("Choose your weapon")
                                         .build()
                                 })
+                                .components(|components| {
+                                    components.create_action_row(|row| {
+                                        row.create_button(|button| {
+                                            button.label("Rock").custom_id(&format!("r{}",id))
+                                        });
+                                        row.create_button(|button| {
+                                            button.label("Paper").custom_id(&format!("p{}",id))
+                                        });
+                                        row.create_button(|button| {
+                                            button.label("Scissors").custom_id(&format!("s{}",id))
+                                        });
+                                        row.create_button(|button| {
+                                            button.label("Spock").custom_id(&format!("S{}",id))
+                                        });
+                                        row.create_button(|button| {
+                                            button.label("Lizard").custom_id(&format!("l{}",id))
+                                        })
+                                    })
+                                })
+
                             })
                         }else {
                         if self.add_player(id,user_id) {
