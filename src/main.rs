@@ -4,7 +4,7 @@ extern crate tokio;
 use dotenv::dotenv;
 use rand::random;
 use serenity::async_trait;
-use serenity::model::prelude::UserId;
+use serenity::model::prelude::{component, UserId};
 use serenity::utils::MessageBuilder;
 use serenity::{
     builder::CreateActionRow,
@@ -17,7 +17,7 @@ use serenity::{
     Client,
 };
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hasher, Hash};
+use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 enum Choices {
     Rock,
@@ -27,16 +27,18 @@ enum Choices {
     Spock,
 }
 
-
 #[derive(PartialEq, Eq)]
 struct Game {
     id: String,
-    players: HashSet<i64>,
+    players: HashSet<u64>,
 }
 
 impl Game {
     fn new(id: String) -> Self {
-        Game { id: id,players: HashSet::new() }
+        Game {
+            id: id,
+            players: HashSet::new(),
+        }
     }
 }
 
@@ -57,13 +59,27 @@ impl New for Handler {
 }
 
 impl Handler {
+    fn add_player(&self, id: String, user_id: u64) -> bool {
+        match self.games.lock().as_deref_mut() {
+            Ok(games) => {
+                if let Some(game) = games.get_mut(&id) {
+                    if !game.players.contains(&user_id) {
+                        game.players.insert(user_id);
+                        return true;
+                    }
+                }
+                false
+            }
+            Err(_) => false,
+        }
+    }
     fn new_game(&self) -> Option<String> {
         let id = random::<u128>().to_string();
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
                 games.insert(id.clone(), Game::new(id.clone()));
                 Some(id)
-            },
+            }
             Err(_) => None,
         }
     }
@@ -80,21 +96,20 @@ impl EventHandler for Handler {
                         .create_interaction_response(&ctx.http, |response| {
                             response
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|message| {
-                                    match self.new_game() {
-                                        Some(id) => {
-                                            message.content("React to join").components(
-                                                |components| {
-                                                    components.create_action_row(|row| {
-                                                        row.create_button(|button| {
-                                                            button.label("Join").custom_id(&id)
-                                                        })
-                                                    })
-                                                },
-                                            )
-                                        }
-                                        None => message.content("Ein Fehler ist aufgetreten"),
+                                .interaction_response_data(|message| match self.new_game() {
+                                    Some(id) => {
+                                        message.content("React to join").components(|components| {
+                                            components.create_action_row(|row| {
+                                                row.create_button(|button| {
+                                                    button.label("Join").custom_id(&id)
+                                                });
+                                                row.create_button(|button| {
+                                                    button.label("Start").custom_id(&format!("start{}",id))
+                                                })
+                                            })
+                                        })
                                     }
+                                    None => message.content("Ein Fehler ist aufgetreten"),
                                 })
                         })
                         .await
@@ -104,31 +119,28 @@ impl EventHandler for Handler {
                 }
             }
             Interaction::MessageComponent(component) => {
+                let user_id=*component.user.id.as_u64();
+                let id=component.data.custom_id.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
-                        match self.games.lock().as_deref_mut() {
-                            Ok(games) => {
-                                if games.contains_key(&component.data.custom_id.to_string()) {
-                                    if true {
-                                        response
-                                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                                            .interaction_response_data(|message| {
-                                                message.content({
-                                                    MessageBuilder::new()
-                                                        .mention(&component.user)
-                                                        .push(" joined the Game")
-                                                        .build()
-                                                })
-                                            })
-                                    } else {
-                                        response.kind(InteractionResponseType::Pong)
-                                    }
-                                } else {
-                                    response.kind(InteractionResponseType::Pong)
-                                }
-                            }
-                            Err(_) => response,
+                        if id.contains("start") {
+                            response.kind(InteractionResponseType::UpdateMessage)
+                        }else {
+                        if self.add_player(id,user_id) {
+                            response
+                                .kind(InteractionResponseType::ChannelMessageWithSource)
+                                .interaction_response_data(|message| {
+                                    message.content({
+                                        MessageBuilder::new()
+                                            .mention(&component.user)
+                                            .push(" joined the Game")
+                                            .build()
+                                    })
+                                })
+                        } else {
+                            response.kind(InteractionResponseType::UpdateMessage)
                         }
+                    }
                     })
                     .await
                 {
