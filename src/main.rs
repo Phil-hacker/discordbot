@@ -16,7 +16,8 @@ use serenity::{
     prelude::{Context, GatewayIntents},
     Client,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hasher, Hash};
 use std::sync::Mutex;
 enum Choices {
     Rock,
@@ -26,14 +27,16 @@ enum Choices {
     Spock,
 }
 
-#[derive(PartialEq, Eq, Hash)]
+
+#[derive(PartialEq, Eq)]
 struct Game {
-    players: Vec<UserId>,
+    id: String,
+    players: HashSet<i64>,
 }
 
 impl Game {
-    fn new() -> Self {
-        Game { players: vec![] }
+    fn new(id: String) -> Self {
+        Game { id: id,players: HashSet::new() }
     }
 }
 
@@ -53,6 +56,19 @@ impl New for Handler {
     }
 }
 
+impl Handler {
+    fn new_game(&self) -> Option<String> {
+        let id = random::<u128>().to_string();
+        match self.games.lock().as_deref_mut() {
+            Ok(games) => {
+                games.insert(id.clone(), Game::new(id.clone()));
+                Some(id)
+            },
+            Err(_) => None,
+        }
+    }
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -65,10 +81,8 @@ impl EventHandler for Handler {
                             response
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
                                 .interaction_response_data(|message| {
-                                    let id = random::<u128>().to_string();
-                                    match self.games.lock().as_deref_mut() {
-                                        Ok(games) => {
-                                            games.insert("test".to_string(), Game::new());
+                                    match self.new_game() {
+                                        Some(id) => {
                                             message.content("React to join").components(
                                                 |components| {
                                                     components.create_action_row(|row| {
@@ -79,7 +93,7 @@ impl EventHandler for Handler {
                                                 },
                                             )
                                         }
-                                        Err(_) => message.content("Ein Fehler ist aufgetreten"),
+                                        None => message.content("Ein Fehler ist aufgetreten"),
                                     }
                                 })
                         })
@@ -93,16 +107,26 @@ impl EventHandler for Handler {
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         match self.games.lock().as_deref_mut() {
-                            Ok(games) => response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|message| {
-                                    message.content({
-                                        MessageBuilder::new()
-                                            .mention(&component.user)
-                                            .push(" joined the Game")
-                                            .build()
-                                    })
-                                }),
+                            Ok(games) => {
+                                if games.contains_key(&component.data.custom_id.to_string()) {
+                                    if true {
+                                        response
+                                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                                            .interaction_response_data(|message| {
+                                                message.content({
+                                                    MessageBuilder::new()
+                                                        .mention(&component.user)
+                                                        .push(" joined the Game")
+                                                        .build()
+                                                })
+                                            })
+                                    } else {
+                                        response.kind(InteractionResponseType::Pong)
+                                    }
+                                } else {
+                                    response.kind(InteractionResponseType::Pong)
+                                }
+                            }
                             Err(_) => response,
                         }
                     })
