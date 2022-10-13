@@ -1,10 +1,11 @@
 extern crate tokio;
 
 use dotenv::dotenv;
+use itertools::Itertools;
 use rand::random;
 use serenity::async_trait;
-use serenity::model::id;
 use serenity::model::prelude::ReactionType;
+use serenity::model::user::User;
 use serenity::utils::MessageBuilder;
 use serenity::{
     client::EventHandler,
@@ -18,7 +19,7 @@ use serenity::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum Choice {
     Rock,
     Paper,
@@ -27,12 +28,116 @@ enum Choice {
     Spock,
 }
 
+#[derive(PartialEq)]
+struct BattleResult {
+    winner: User,
+    winner_choice: Choice,
+    loser: User,
+    loser_choice: Choice,
+    verb: String,
+}
+impl BattleResult {
+    fn new(
+        winner: User,
+        winner_choice: Choice,
+        loser: User,
+        loser_choice: Choice,
+        verb: &str,
+    ) -> Self {
+        BattleResult {
+            winner,
+            winner_choice,
+            loser,
+            loser_choice,
+            verb: verb.to_string(),
+        }
+    }
+}
+
+struct Battle {
+    player1: User,
+    choice1: Choice,
+    player2: User,
+    choice2: Choice,
+}
+
+impl Battle {
+    fn new(player1: User, choice1: Choice, player2: User, choice2: Choice) -> Self {
+        Battle {
+            player1,
+            choice1,
+            player2,
+            choice2,
+        }
+    }
+    fn new_ref(player1: &User, choice1: &Choice, player2: &User, choice2: &Choice) -> Self {
+        Self::new(player1.clone(), *choice1, player2.clone(), *choice2)
+    }
+    fn battle(&self) -> Option<BattleResult> {
+        match self.choice1 {
+            Choice::Rock => match self.choice2 {
+                Choice::Rock => None,
+                Choice::Paper => Some(self.win2("covers")),
+                Choice::Scissors => Some(self.win1("crushes")),
+                Choice::Lizard => Some(self.win1("crushes")),
+                Choice::Spock => Some(self.win2("vaporizes")),
+            },
+            Choice::Paper => match self.choice2 {
+                Choice::Rock => Some(self.win1("covers")),
+                Choice::Paper => None,
+                Choice::Scissors => Some(self.win2("cuts")),
+                Choice::Lizard => Some(self.win2("eats")),
+                Choice::Spock => Some(self.win1("disproves")),
+            },
+            Choice::Scissors => match self.choice2 {
+                Choice::Rock => Some(self.win2("crushes")),
+                Choice::Paper => Some(self.win1("cuts")),
+                Choice::Scissors => None,
+                Choice::Lizard => Some(self.win1("decapitates")),
+                Choice::Spock => Some(self.win2("smashes")),
+            },
+            Choice::Lizard => match self.choice2 {
+                Choice::Rock => Some(self.win2("crushes")),
+                Choice::Paper => Some(self.win1("eats")),
+                Choice::Scissors => Some(self.win2("decapitates")),
+                Choice::Lizard => None,
+                Choice::Spock => Some(self.win1("poisons")),
+            },
+            Choice::Spock => match self.choice2 {
+                Choice::Rock => Some(self.win1("vaporizes")),
+                Choice::Paper => Some(self.win2("disproves")),
+                Choice::Scissors => Some(self.win1("smashes")),
+                Choice::Lizard => Some(self.win2("poisons")),
+                Choice::Spock => None,
+            },
+        }
+    }
+    fn win1(&self, verb: &str) -> BattleResult {
+        BattleResult::new(
+            self.player1.clone(),
+            self.choice1,
+            self.player2.clone(),
+            self.choice2,
+            verb,
+        )
+    }
+    fn win2(&self, verb: &str) -> BattleResult {
+        BattleResult::new(
+            self.player2.clone(),
+            self.choice2,
+            self.player1.clone(),
+            self.choice1,
+            verb,
+        )
+    }
+}
+
 #[derive(PartialEq, Eq)]
 struct Game {
     started: bool,
     id: String,
-    players: HashSet<u64>,
-    choices: HashMap<u64, Choice>,
+    players: HashSet<User>,
+    choices: HashMap<User, Choice>,
 }
 
 impl Game {
@@ -63,14 +168,62 @@ impl New for Handler {
 }
 
 impl Handler {
-    fn choose(&self, id: &String, user_id: u64, c: char) -> () {
+    fn generate_message(&self, id: &String) -> String {
+        match self.get_all_interactions(id) {
+            Some(battles) => battles
+                .into_iter()
+                .map(|battle| {
+                    MessageBuilder::new()
+                        .mention(&battle.winner)
+                        .push(choice_to_emoji(battle.winner_choice))
+                        .push(" ")
+                        .push(battle.verb)
+                        .push(" ")
+                        .push(choice_to_emoji(battle.loser_choice))
+                        .mention(&battle.loser)
+                        .push("\n")
+                        .build()
+                })
+                .collect(),
+            None => "".to_string(),
+        }
+    }
+    fn get_all_interactions(&self, id: &String) -> Option<Vec<BattleResult>> {
+        match self.games.lock().as_deref_mut() {
+            Ok(games) => {
+                let battle_results: Vec<BattleResult> = games
+                    .get(id)?
+                    .choices
+                    .iter()
+                    .cartesian_product(games.get(id)?.choices.iter())
+                    .filter_map(|combination| {
+                        if combination.0 .0 == combination.1 .0 {
+                            None
+                        } else {
+                            Some(Battle::new_ref(
+                                combination.0 .0,
+                                combination.0 .1,
+                                combination.1 .0,
+                                combination.1 .1,
+                            ))
+                        }
+                    })
+                    .filter_map(|battle| return battle.battle())
+                    .dedup()
+                    .collect();
+                Some(battle_results)
+            }
+            Err(_) => None,
+        }
+    }
+    fn choose(&self, id: &String, user: &User, c: char) -> () {
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(id) {
-                if game.players.contains(&user_id) {
+                if game.players.contains(&user) {
                     let choice = get_choice_from_char(c);
                     match choice {
                         Some(choice) => {
-                            game.choices.insert(user_id, choice);
+                            game.choices.insert(user.clone(), choice);
                         }
                         None => {}
                     }
@@ -82,7 +235,7 @@ impl Handler {
     fn get_finished_players(&self, id: &String) -> usize {
         match self.games.lock().as_deref_mut() {
             Ok(games) => match games.get(id) {
-                Some(game) => game.choices.keys().collect::<Vec<&u64>>().len(),
+                Some(game) => game.choices.keys().collect::<Vec<&User>>().len(),
                 None => 0,
             },
             Err(_) => 0,
@@ -100,15 +253,13 @@ impl Handler {
         }
         false
     }
-    fn did_all_choose(&self, id: &String) -> bool{
+    fn did_all_choose(&self, id: &String) -> bool {
         match self.games.lock().as_deref() {
-            Ok(games) => {
-                match games.get(id) {
-                    Some(game) => {
-                        game.players.len()==game.choices.keys().collect::<Vec<&u64>>().len()
-                    },
-                    None => false
+            Ok(games) => match games.get(id) {
+                Some(game) => {
+                    game.players.len() == game.choices.keys().collect::<Vec<&User>>().len()
                 }
+                None => false,
             },
             Err(_) => false,
         }
@@ -122,12 +273,12 @@ impl Handler {
             Err(_) => 0,
         }
     }
-    fn add_player(&self, id: String, user_id: u64) -> bool {
+    fn add_player(&self, id: String, user: &User) -> bool {
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
                 if let Some(game) = games.get_mut(&id) {
-                    if !game.players.contains(&user_id) && !game.started {
-                        game.players.insert(user_id);
+                    if !game.players.contains(user) && !game.started {
+                        game.players.insert(user.clone());
                         return true;
                     }
                 }
@@ -156,6 +307,16 @@ fn get_choice_from_char(c: char) -> Option<Choice> {
         'l' => Some(Choice::Lizard),
         'S' => Some(Choice::Spock),
         _ => None,
+    }
+}
+
+fn choice_to_emoji(c: Choice) -> ReactionType {
+    match c {
+        Choice::Rock => ReactionType::Unicode("🪨".to_string()),
+        Choice::Paper => ReactionType::Unicode("📄".to_string()),
+        Choice::Scissors => ReactionType::Unicode("✂️".to_string()),
+        Choice::Lizard => ReactionType::Unicode("🦎".to_string()),
+        Choice::Spock => ReactionType::Unicode("🖖".to_string()),
     }
 }
 
@@ -197,7 +358,7 @@ impl EventHandler for Handler {
                 }
             }
             Interaction::MessageComponent(component) => {
-                let user_id = *component.user.id.as_u64();
+                let user_id = &component.user;
                 let id: String;
                 let cmd: String;
                 {
@@ -296,16 +457,19 @@ impl EventHandler for Handler {
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
                                     if self.did_all_choose(&id) {
-                                        message.content(format!(
-                                            "All players chose"
-                                        ))
+                                        message.content(
+                                            MessageBuilder::new()
+                                                .push("All players chose\n")
+                                                .push(self.generate_message(&id))
+                                                .build(),
+                                        )
                                     } else {
-                                    message.content(format!(
-                                        "Choose your weapon\n{}/{} players chose",
-                                        self.get_finished_players(&id),
-                                        self.get_player_count(&id)
-                                    ))
-                                }
+                                        message.content(format!(
+                                            "Choose your weapon\n{}/{} players chose",
+                                            self.get_finished_players(&id),
+                                            self.get_player_count(&id)
+                                        ))
+                                    }
                                 })
                         } else {
                             response.kind(InteractionResponseType::UpdateMessage)
