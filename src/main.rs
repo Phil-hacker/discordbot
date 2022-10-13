@@ -8,7 +8,8 @@ use serenity::utils::MessageBuilder;
 use serenity::{
     client::EventHandler,
     model::application::{
-        command::Command, interaction::Interaction, interaction::InteractionResponseType, component::ButtonStyle
+        command::Command, component::ButtonStyle, interaction::Interaction,
+        interaction::InteractionResponseType,
     },
     model::gateway::Ready,
     prelude::{Context, GatewayIntents},
@@ -26,13 +27,12 @@ enum Choice {
     Spock,
 }
 
-
 #[derive(PartialEq, Eq)]
 struct Game {
     started: bool,
     id: String,
     players: HashSet<u64>,
-    choices: HashMap<i64,Choice>
+    choices: HashMap<i64, Choice>,
 }
 
 impl Game {
@@ -41,7 +41,7 @@ impl Game {
             started: false,
             id,
             players: HashSet::new(),
-            choices: HashMap::new()
+            choices: HashMap::new(),
         }
     }
 }
@@ -108,7 +108,6 @@ impl Handler {
     }
 }
 
-
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -126,12 +125,14 @@ impl EventHandler for Handler {
                                         .components(|components| {
                                             components.create_action_row(|row| {
                                                 row.create_button(|button| {
-                                                    button.label("Join").custom_id(&id)
+                                                    button
+                                                        .label("Join")
+                                                        .custom_id(&format!("join:{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Start")
-                                                        .custom_id(&format!("start{}", id))
+                                                        .custom_id(&format!("start:{}", id))
                                                 })
                                             })
                                         }),
@@ -146,11 +147,21 @@ impl EventHandler for Handler {
             }
             Interaction::MessageComponent(component) => {
                 let user_id = *component.user.id.as_u64();
-                let id = component.data.custom_id.clone();
+                let id: String;
+                let cmd: String;
+                {
+                    let cid = component.data.custom_id.clone();
+                    let custom_id = match cid.split_once(':') {
+                        Some(data) => data,
+                        None => return,
+                    };
+                    id = custom_id.1.to_string();
+                    cmd = custom_id.0.to_string();
+                }
                 let content = component.message.content.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
-                        if id.contains("start") {
+                        if cmd == "start" {
                             self.start_game(id.clone().split_off(5));
                             response
                                 .kind(InteractionResponseType::UpdateMessage)
@@ -164,54 +175,68 @@ impl EventHandler for Handler {
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Rock")
-                                                        .emoji(ReactionType::Unicode("🪨".to_string()))
+                                                        .emoji(ReactionType::Unicode(
+                                                            "🪨".to_string(),
+                                                        ))
                                                         .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#r{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Paper")
-                                                        .emoji(ReactionType::Unicode("📄".to_string()))
+                                                        .emoji(ReactionType::Unicode(
+                                                            "📄".to_string(),
+                                                        ))
                                                         .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#p{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Scissors")
-                                                        .emoji(ReactionType::Unicode("✂️".to_string()))
+                                                        .emoji(ReactionType::Unicode(
+                                                            "✂️".to_string(),
+                                                        ))
                                                         .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#s{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Lizard")
-                                                        .emoji(ReactionType::Unicode("🦎".to_string()))
+                                                        .emoji(ReactionType::Unicode(
+                                                            "🦎".to_string(),
+                                                        ))
                                                         .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#l{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Spock")
-                                                        .emoji(ReactionType::Unicode("🖖".to_string()))
+                                                        .emoji(ReactionType::Unicode(
+                                                            "🖖".to_string(),
+                                                        ))
                                                         .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#S{}", id))
-                                                
                                                 })
                                             })
                                         })
                                 })
-                        } else if self.add_player(id, user_id) {
-                            response
-                                .kind(InteractionResponseType::UpdateMessage)
-                                .interaction_response_data(|message| {
-                                    message.content({
-                                        MessageBuilder::new()
-                                            .push(content)
-                                            .push("\n")
-                                            .mention(&component.user)
-                                            .build()
+                        } else if cmd == "join" {
+                            if self.add_player(id, user_id) {
+                                response
+                                    .kind(InteractionResponseType::UpdateMessage)
+                                    .interaction_response_data(|message| {
+                                        message.content({
+                                            println!("join");
+                                            MessageBuilder::new()
+                                                .push(content)
+                                                .push("\n")
+                                                .mention(&component.user)
+                                                .build()
+                                        })
                                     })
-                                })
+                            } else {
+                                response.kind(InteractionResponseType::UpdateMessage)
+                            }
                         } else {
                             response.kind(InteractionResponseType::UpdateMessage)
                         }
