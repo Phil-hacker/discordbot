@@ -3,6 +3,7 @@ extern crate tokio;
 use dotenv::dotenv;
 use rand::random;
 use serenity::async_trait;
+use serenity::model::id;
 use serenity::model::prelude::ReactionType;
 use serenity::utils::MessageBuilder;
 use serenity::{
@@ -19,7 +20,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 #[derive(PartialEq, Eq)]
 enum Choice {
-    None,
     Rock,
     Paper,
     Scissors,
@@ -32,7 +32,7 @@ struct Game {
     started: bool,
     id: String,
     players: HashSet<u64>,
-    choices: HashMap<i64, Choice>,
+    choices: HashMap<u64, Choice>,
 }
 
 impl Game {
@@ -63,17 +63,55 @@ impl New for Handler {
 }
 
 impl Handler {
-    fn start_game(&self, id: String) -> bool {
+    fn choose(&self, id: &String, user_id: u64, c: char) -> () {
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            if let Some(game) = games.get_mut(id) {
+                if game.players.contains(&user_id) {
+                    let choice = get_choice_from_char(c);
+                    match choice {
+                        Some(choice) => {
+                            game.choices.insert(user_id, choice);
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+    }
+
+    fn get_finished_players(&self, id: &String) -> usize {
+        match self.games.lock().as_deref_mut() {
+            Ok(games) => match games.get(id) {
+                Some(game) => game.choices.keys().collect::<Vec<&u64>>().len(),
+                None => 0,
+            },
+            Err(_) => 0,
+        }
+    }
+    fn start_game(&self, id: &String) -> bool {
         if self.get_player_count(&id) < 2 {
             return false;
         }
         if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get_mut(&id) {
+            if let Some(game) = games.get_mut(id) {
                 game.started = true;
                 return true;
             }
         }
         false
+    }
+    fn did_all_choose(&self, id: &String) -> bool{
+        match self.games.lock().as_deref() {
+            Ok(games) => {
+                match games.get(id) {
+                    Some(game) => {
+                        game.players.len()==game.choices.keys().collect::<Vec<&u64>>().len()
+                    },
+                    None => false
+                }
+            },
+            Err(_) => false,
+        }
     }
     fn get_player_count(&self, id: &String) -> usize {
         match self.games.lock().as_deref_mut() {
@@ -107,6 +145,17 @@ impl Handler {
             }
             Err(_) => None,
         }
+    }
+}
+
+fn get_choice_from_char(c: char) -> Option<Choice> {
+    match c {
+        'r' => Some(Choice::Rock),
+        'p' => Some(Choice::Paper),
+        's' => Some(Choice::Scissors),
+        'l' => Some(Choice::Lizard),
+        'S' => Some(Choice::Spock),
+        _ => None,
     }
 }
 
@@ -164,14 +213,16 @@ impl EventHandler for Handler {
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         if cmd.eq(&"start".to_string()) {
-                            self.start_game(id.clone().split_off(5));
+                            self.start_game(&id.clone().split_off(5));
                             response
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
                                     message
-                                        .content({
-                                            MessageBuilder::new().push("Choose your weapon").build()
-                                        })
+                                        .content(format!(
+                                            "Choose your weapon\n{}/{} players chose",
+                                            self.get_finished_players(&id),
+                                            self.get_player_count(&id)
+                                        ))
                                         .components(|components| {
                                             components.create_action_row(|row| {
                                                 row.create_button(|button| {
@@ -181,7 +232,7 @@ impl EventHandler for Handler {
                                                             "🪨".to_string(),
                                                         ))
                                                         .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#r{}", id))
+                                                        .custom_id(&format!("#r:{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
@@ -190,7 +241,7 @@ impl EventHandler for Handler {
                                                             "📄".to_string(),
                                                         ))
                                                         .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#p{}", id))
+                                                        .custom_id(&format!("#p:{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
@@ -199,7 +250,7 @@ impl EventHandler for Handler {
                                                             "✂️".to_string(),
                                                         ))
                                                         .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#s{}", id))
+                                                        .custom_id(&format!("#s:{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
@@ -208,7 +259,7 @@ impl EventHandler for Handler {
                                                             "🦎".to_string(),
                                                         ))
                                                         .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#l{}", id))
+                                                        .custom_id(&format!("#l:{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
@@ -217,7 +268,7 @@ impl EventHandler for Handler {
                                                             "🖖".to_string(),
                                                         ))
                                                         .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#S{}", id))
+                                                        .custom_id(&format!("#S:{}", id))
                                                 })
                                             })
                                         })
@@ -239,6 +290,23 @@ impl EventHandler for Handler {
                             } else {
                                 response.kind(InteractionResponseType::UpdateMessage)
                             }
+                        } else if cmd.chars().nth(0).unwrap_or('+') == '#' {
+                            self.choose(&id, user_id, cmd.chars().nth(1).unwrap_or(' '));
+                            response
+                                .kind(InteractionResponseType::UpdateMessage)
+                                .interaction_response_data(|message| {
+                                    if self.did_all_choose(&id) {
+                                        message.content(format!(
+                                            "All players chose"
+                                        ))
+                                    } else {
+                                    message.content(format!(
+                                        "Choose your weapon\n{}/{} players chose",
+                                        self.get_finished_players(&id),
+                                        self.get_player_count(&id)
+                                    ))
+                                }
+                                })
                         } else {
                             response.kind(InteractionResponseType::UpdateMessage)
                         }
