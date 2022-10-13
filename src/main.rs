@@ -3,6 +3,7 @@ extern crate tokio;
 use dotenv::dotenv;
 use rand::random;
 use serenity::async_trait;
+use serenity::model::prelude::ReactionType;
 use serenity::utils::MessageBuilder;
 use serenity::{
     client::EventHandler,
@@ -24,6 +25,7 @@ enum Choice {
     Lizard,
     Spock,
 }
+
 
 #[derive(PartialEq, Eq)]
 struct Game {
@@ -106,6 +108,7 @@ impl Handler {
     }
 }
 
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -161,26 +164,31 @@ impl EventHandler for Handler {
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Rock")
+                                                        .emoji(ReactionType::Unicode("🪨".to_string()))
                                                         .custom_id(&format!("#r{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Paper")
+                                                        .emoji(ReactionType::Unicode("📄".to_string()))
                                                         .custom_id(&format!("#p{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Scissors")
+                                                        .emoji(ReactionType::Unicode("✂️".to_string()))
                                                         .custom_id(&format!("#s{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Spock")
+                                                        .emoji(ReactionType::Unicode("🖖".to_string()))
                                                         .custom_id(&format!("#S{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Lizard")
+                                                        .emoji(ReactionType::Unicode("🦎".to_string()))
                                                         .custom_id(&format!("#l{}", id))
                                                 })
                                             })
