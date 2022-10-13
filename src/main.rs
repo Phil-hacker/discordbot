@@ -63,12 +63,17 @@ impl New for Handler {
 }
 
 impl Handler {
-    fn start_game(&self, id: String) {
+    fn start_game(&self, id: String) -> bool {
+        if self.get_player_count(&id) < 2 {
+            return false;
+        }
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(&id) {
                 game.started = true;
+                return true;
             }
         }
+        false
     }
     fn get_player_count(&self, id: &String) -> usize {
         match self.games.lock().as_deref_mut() {
@@ -80,9 +85,6 @@ impl Handler {
         }
     }
     fn add_player(&self, id: String, user_id: u64) -> bool {
-        if self.get_player_count(&id) < 2 {
-            return false;
-        }
         match self.games.lock().as_deref_mut() {
             Ok(games) => {
                 if let Some(game) = games.get_mut(&id) {
@@ -161,7 +163,7 @@ impl EventHandler for Handler {
                 let content = component.message.content.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
-                        if cmd == "start" {
+                        if cmd.eq(&"start".to_string()) {
                             self.start_game(id.clone().split_off(5));
                             response
                                 .kind(InteractionResponseType::UpdateMessage)
@@ -220,7 +222,7 @@ impl EventHandler for Handler {
                                             })
                                         })
                                 })
-                        } else if cmd == "join" {
+                        } else if cmd.eq(&"join".to_string()) {
                             if self.add_player(id, user_id) {
                                 response
                                     .kind(InteractionResponseType::UpdateMessage)
