@@ -8,7 +8,7 @@ use serenity::utils::MessageBuilder;
 use serenity::{
     client::EventHandler,
     model::application::{
-        command::Command, interaction::Interaction, interaction::InteractionResponseType,
+        command::Command, interaction::Interaction, interaction::InteractionResponseType, component::ButtonStyle
     },
     model::gateway::Ready,
     prelude::{Context, GatewayIntents},
@@ -165,31 +165,37 @@ impl EventHandler for Handler {
                                                     button
                                                         .label("Rock")
                                                         .emoji(ReactionType::Unicode("🪨".to_string()))
+                                                        .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#r{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Paper")
                                                         .emoji(ReactionType::Unicode("📄".to_string()))
+                                                        .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#p{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Scissors")
                                                         .emoji(ReactionType::Unicode("✂️".to_string()))
+                                                        .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#s{}", id))
-                                                });
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Spock")
-                                                        .emoji(ReactionType::Unicode("🖖".to_string()))
-                                                        .custom_id(&format!("#S{}", id))
                                                 });
                                                 row.create_button(|button| {
                                                     button
                                                         .label("Lizard")
                                                         .emoji(ReactionType::Unicode("🦎".to_string()))
+                                                        .style(ButtonStyle::Secondary)
                                                         .custom_id(&format!("#l{}", id))
+                                                });
+                                                row.create_button(|button| {
+                                                    button
+                                                        .label("Spock")
+                                                        .emoji(ReactionType::Unicode("🖖".to_string()))
+                                                        .style(ButtonStyle::Secondary)
+                                                        .custom_id(&format!("#S{}", id))
+                                                
                                                 })
                                             })
                                         })
