@@ -171,48 +171,47 @@ impl Handler {
     fn generate_message(&self, id: &String) -> String {
         let mut points: HashMap<User, u16> = HashMap::new();
         if let Some(battles) = self.get_all_interactions(id) {
-            return MessageBuilder::new().push(
-                battles
-                    .into_iter()
-                    .map(|battle| {
-                        points.insert(
-                            battle.winner.clone(),
-                            *points.get(&battle.winner).unwrap_or(&0)+1,
-                        );
-                        points.insert(
-                            battle.loser.clone(),
-                            *points.get(&battle.loser).unwrap_or(&0),
-                        );
-                        MessageBuilder::new()
-                            .mention(&battle.winner)
-                            .push(choice_to_emoji(battle.winner_choice))
-                            .push(" ")
-                            .push(battle.verb)
-                            .push(" ")
-                            .push(choice_to_emoji(battle.loser_choice))
-                            .mention(&battle.loser)
-                            .push("\n")
-                            .build()
-                    })
-                    .collect::<String>()
-            )
-            .push(
-                points
-                .into_iter()
-                .sorted_by_key(|user| {
-                    user.1
-                })
-                .into_iter()
-                .map(|user| {
-                    MessageBuilder::new()
-                    .mention(&user.0)
-                    .push(format!(" {} points",user.1))
-                    .push("\n")
-                    .build()
-                })
-                .collect::<String>()
-            )
-            .build();
+            return MessageBuilder::new()
+                .push(
+                    battles
+                        .into_iter()
+                        .map(|battle| {
+                            points.insert(
+                                battle.winner.clone(),
+                                *points.get(&battle.winner).unwrap_or(&0) + 1,
+                            );
+                            points.insert(
+                                battle.loser.clone(),
+                                *points.get(&battle.loser).unwrap_or(&0),
+                            );
+                            MessageBuilder::new()
+                                .mention(&battle.winner)
+                                .push(choice_to_emoji(battle.winner_choice))
+                                .push(" ")
+                                .push(battle.verb)
+                                .push(" ")
+                                .push(choice_to_emoji(battle.loser_choice))
+                                .mention(&battle.loser)
+                                .push("\n")
+                                .build()
+                        })
+                        .collect::<String>(),
+                )
+                .push(
+                    points
+                        .into_iter()
+                        .sorted_by_key(|user| user.1)
+                        .into_iter()
+                        .map(|user| {
+                            MessageBuilder::new()
+                                .mention(&user.0)
+                                .push(format!(" {} points", user.1))
+                                .push("\n")
+                                .build()
+                        })
+                        .collect::<String>(),
+                )
+                .build();
         }
         "".to_string()
     }
@@ -236,7 +235,7 @@ impl Handler {
                             ))
                         }
                     })
-                    .filter_map(|battle| return battle.battle())
+                    .filter_map(|battle| battle.battle())
                     .dedup()
                     .collect();
                 Some(battle_results)
@@ -244,16 +243,13 @@ impl Handler {
             Err(_) => None,
         }
     }
-    fn choose(&self, id: &String, user: &User, c: char) -> () {
+    fn choose(&self, id: &String, user: &User, c: char) {
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(id) {
-                if game.players.contains(&user) {
+                if game.players.contains(user) {
                     let choice = get_choice_from_char(c);
-                    match choice {
-                        Some(choice) => {
-                            game.choices.insert(user.clone(), choice);
-                        }
-                        None => {}
+                    if let Some(choice) = choice {
+                        game.choices.insert(user.clone(), choice);
                     }
                 }
             }
@@ -263,14 +259,14 @@ impl Handler {
     fn get_finished_players(&self, id: &String) -> usize {
         match self.games.lock().as_deref_mut() {
             Ok(games) => match games.get(id) {
-                Some(game) => game.choices.keys().collect::<Vec<&User>>().len(),
+                Some(game) => game.choices.keys().count(),
                 None => 0,
             },
             Err(_) => 0,
         }
     }
     fn start_game(&self, id: &String) -> bool {
-        if self.get_player_count(&id) < 2 {
+        if self.get_player_count(id) < 2 {
             return false;
         }
         if let Ok(games) = self.games.lock().as_deref_mut() {
@@ -285,7 +281,7 @@ impl Handler {
         match self.games.lock().as_deref() {
             Ok(games) => match games.get(id) {
                 Some(game) => {
-                    game.players.len() == game.choices.keys().collect::<Vec<&User>>().len()
+                    game.players.len() == game.choices.keys().count()
                 }
                 None => false,
             },
@@ -479,7 +475,7 @@ impl EventHandler for Handler {
                             } else {
                                 response.kind(InteractionResponseType::UpdateMessage)
                             }
-                        } else if cmd.chars().nth(0).unwrap_or('+') == '#' {
+                        } else if cmd.chars().next().unwrap_or('+') == '#' {
                             self.choose(&id, user_id, cmd.chars().nth(1).unwrap_or(' '));
                             response
                                 .kind(InteractionResponseType::UpdateMessage)
