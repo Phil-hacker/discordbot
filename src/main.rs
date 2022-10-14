@@ -169,24 +169,52 @@ impl New for Handler {
 
 impl Handler {
     fn generate_message(&self, id: &String) -> String {
-        match self.get_all_interactions(id) {
-            Some(battles) => battles
+        let mut points: HashMap<User, u16> = HashMap::new();
+        if let Some(battles) = self.get_all_interactions(id) {
+            return MessageBuilder::new().push(
+                battles
+                    .into_iter()
+                    .map(|battle| {
+                        points.insert(
+                            battle.winner.clone(),
+                            *points.get(&battle.winner).unwrap_or(&0)+1,
+                        );
+                        points.insert(
+                            battle.loser.clone(),
+                            *points.get(&battle.loser).unwrap_or(&0),
+                        );
+                        MessageBuilder::new()
+                            .mention(&battle.winner)
+                            .push(choice_to_emoji(battle.winner_choice))
+                            .push(" ")
+                            .push(battle.verb)
+                            .push(" ")
+                            .push(choice_to_emoji(battle.loser_choice))
+                            .mention(&battle.loser)
+                            .push("\n")
+                            .build()
+                    })
+                    .collect::<String>()
+            )
+            .push(
+                points
                 .into_iter()
-                .map(|battle| {
-                    MessageBuilder::new()
-                        .mention(&battle.winner)
-                        .push(choice_to_emoji(battle.winner_choice))
-                        .push(" ")
-                        .push(battle.verb)
-                        .push(" ")
-                        .push(choice_to_emoji(battle.loser_choice))
-                        .mention(&battle.loser)
-                        .push("\n")
-                        .build()
+                .sorted_by_key(|user| {
+                    user.1
                 })
-                .collect(),
-            None => "".to_string(),
+                .into_iter()
+                .map(|user| {
+                    MessageBuilder::new()
+                    .mention(&user.0)
+                    .push(format!(" {} points",user.1))
+                    .push("\n")
+                    .build()
+                })
+                .collect::<String>()
+            )
+            .build();
         }
+        "".to_string()
     }
     fn get_all_interactions(&self, id: &String) -> Option<Vec<BattleResult>> {
         match self.games.lock().as_deref_mut() {
