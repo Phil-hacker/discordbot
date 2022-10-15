@@ -216,32 +216,30 @@ impl Handler {
         "".to_string()
     }
     fn get_all_interactions(&self, id: &String) -> Option<Vec<BattleResult>> {
-        match self.games.lock().as_deref_mut() {
-            Ok(games) => {
-                let battle_results: Vec<BattleResult> = games
-                    .get(id)?
-                    .choices
-                    .iter()
-                    .cartesian_product(games.get(id)?.choices.iter())
-                    .filter_map(|combination| {
-                        if combination.0 .0 == combination.1 .0 {
-                            None
-                        } else {
-                            Some(Battle::new_ref(
-                                combination.0 .0,
-                                combination.0 .1,
-                                combination.1 .0,
-                                combination.1 .1,
-                            ))
-                        }
-                    })
-                    .filter_map(|battle| battle.battle())
-                    .dedup()
-                    .collect();
-                Some(battle_results)
-            }
-            Err(_) => None,
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            let battle_results: Vec<BattleResult> = games
+                .get(id)?
+                .choices
+                .iter()
+                .cartesian_product(games.get(id)?.choices.iter())
+                .filter_map(|combination| {
+                    if combination.0 .0 == combination.1 .0 {
+                        None
+                    } else {
+                        Some(Battle::new_ref(
+                            combination.0 .0,
+                            combination.0 .1,
+                            combination.1 .0,
+                            combination.1 .1,
+                        ))
+                    }
+                })
+                .filter_map(|battle| battle.battle())
+                .dedup()
+                .collect();
+            return Some(battle_results);
         }
+        None
     }
     fn choose(&self, id: &String, user: &User, c: char) {
         if let Ok(games) = self.games.lock().as_deref_mut() {
@@ -257,13 +255,12 @@ impl Handler {
     }
 
     fn get_finished_players(&self, id: &String) -> usize {
-        match self.games.lock().as_deref_mut() {
-            Ok(games) => match games.get(id) {
-                Some(game) => game.choices.keys().count(),
-                None => 0,
-            },
-            Err(_) => 0,
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            if let Some(game) = games.get(id) {
+                return game.choices.keys().count();
+            }
         }
+        0
     }
     fn start_game(&self, id: &String) -> bool {
         if self.get_player_count(id) < 2 {
@@ -278,48 +275,39 @@ impl Handler {
         false
     }
     fn did_all_choose(&self, id: &String) -> bool {
-        match self.games.lock().as_deref() {
-            Ok(games) => match games.get(id) {
-                Some(game) => {
-                    game.players.len() == game.choices.keys().count()
-                }
-                None => false,
-            },
-            Err(_) => false,
+        if let Ok(games) = self.games.lock().as_deref() {
+            if let Some(game) = games.get(id) {
+                return game.players.len() == game.choices.keys().count();
+            }
         }
+        false
     }
     fn get_player_count(&self, id: &String) -> usize {
-        match self.games.lock().as_deref_mut() {
-            Ok(games) => match games.get(id) {
-                Some(game) => game.players.len(),
-                None => 0,
-            },
-            Err(_) => 0,
+        if let Ok(games) = self.games.lock().as_deref() {
+            if let Some(game) = games.get(id) {
+                return game.players.len();
+            }
         }
+        0
     }
     fn add_player(&self, id: String, user: &User) -> bool {
-        match self.games.lock().as_deref_mut() {
-            Ok(games) => {
-                if let Some(game) = games.get_mut(&id) {
-                    if !game.players.contains(user) && !game.started {
-                        game.players.insert(user.clone());
-                        return true;
-                    }
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            if let Some(game) = games.get_mut(&id) {
+                if !game.players.contains(user) && !game.started {
+                    game.players.insert(user.clone());
+                    return true;
                 }
-                false
             }
-            Err(_) => false,
         }
+        false
     }
     fn new_game(&self) -> Option<String> {
         let id = random::<u128>().to_string();
-        match self.games.lock().as_deref_mut() {
-            Ok(games) => {
-                games.insert(id.clone(), Game::new(id.clone()));
-                Some(id)
-            }
-            Err(_) => None,
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            games.insert(id.clone(), Game::new(id.clone()));
+            return Some(id);
         }
+        None
     }
 }
 
@@ -464,7 +452,6 @@ impl EventHandler for Handler {
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
                                         message.content({
-                                            println!("join");
                                             MessageBuilder::new()
                                                 .push(content)
                                                 .push("\n")
