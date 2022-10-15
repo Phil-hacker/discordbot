@@ -170,49 +170,57 @@ impl New for Handler {
 impl Handler {
     fn generate_message(&self, id: &String) -> String {
         let mut points: HashMap<User, u16> = HashMap::new();
-        if let Some(battles) = self.get_all_interactions(id) {
+        if let Some(choice) = self.did_all_choose_same(id) {
             return MessageBuilder::new()
-                .push(
-                    battles
-                        .into_iter()
-                        .map(|battle| {
-                            points.insert(
-                                battle.winner.clone(),
-                                *points.get(&battle.winner).unwrap_or(&0) + 1,
-                            );
-                            points.insert(
-                                battle.loser.clone(),
-                                *points.get(&battle.loser).unwrap_or(&0),
-                            );
-                            MessageBuilder::new()
-                                .mention(&battle.winner)
-                                .push(choice_to_emoji(battle.winner_choice))
-                                .push(" ")
-                                .push(battle.verb)
-                                .push(" ")
-                                .push(choice_to_emoji(battle.loser_choice))
-                                .mention(&battle.loser)
-                                .push("\n")
-                                .build()
-                        })
-                        .collect::<String>(),
-                )
-                .push(
-                    points
-                        .into_iter()
-                        .sorted_by_key(|user| user.1)
-                        .rev()
-                        .into_iter()
-                        .map(|user| {
-                            MessageBuilder::new()
-                                .mention(&user.0)
-                                .push(format!(" {} points", user.1))
-                                .push("\n")
-                                .build()
-                        })
-                        .collect::<String>(),
-                )
-                .build();
+            .push("All players chose ")
+            .push(choice_to_emoji(choice))
+            .push("\nNo one wins")
+            .build()
+        } else {
+            if let Some(battles) = self.get_all_interactions(id) {
+                return MessageBuilder::new()
+                    .push(
+                        battles
+                            .into_iter()
+                            .map(|battle| {
+                                points.insert(
+                                    battle.winner.clone(),
+                                    *points.get(&battle.winner).unwrap_or(&0) + 1,
+                                );
+                                points.insert(
+                                    battle.loser.clone(),
+                                    *points.get(&battle.loser).unwrap_or(&0),
+                                );
+                                MessageBuilder::new()
+                                    .mention(&battle.winner)
+                                    .push(choice_to_emoji(battle.winner_choice))
+                                    .push(" ")
+                                    .push(battle.verb)
+                                    .push(" ")
+                                    .push(choice_to_emoji(battle.loser_choice))
+                                    .mention(&battle.loser)
+                                    .push("\n")
+                                    .build()
+                            })
+                            .collect::<String>(),
+                    )
+                    .push(
+                        points
+                            .into_iter()
+                            .sorted_by_key(|user| user.1)
+                            .rev()
+                            .into_iter()
+                            .map(|user| {
+                                MessageBuilder::new()
+                                    .mention(&user.0)
+                                    .push(format!(" {} points", user.1))
+                                    .push("\n")
+                                    .build()
+                            })
+                            .collect::<String>(),
+                    )
+                    .build();
+            }
         }
         "".to_string()
     }
@@ -239,6 +247,18 @@ impl Handler {
                 .dedup()
                 .collect();
             return Some(battle_results);
+        }
+        None
+    }
+    fn did_all_choose_same(&self, id: &String) -> Option<Choice> {
+        if let Ok(games) = self.games.lock().as_deref() {
+            if let Some(game) = games.get(id) {
+                if game.choices.values().dedup().count() == 1 {
+                    if let Some(v) = game.choices.values().next() {
+                        return Some(*v);
+                    }
+                }
+            }
         }
         None
     }
@@ -472,15 +492,13 @@ impl EventHandler for Handler {
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
                                     if self.did_all_choose(&id) {
-                                        message.content(
-                                            MessageBuilder::new()
-                                                .push("All players chose\n")
-                                                .push(self.generate_message(&id))
-                                                .build(),
-                                        )
-                                        .components(|components| {
-                                            components
-                                        })
+                                        message
+                                            .content(
+                                                MessageBuilder::new()
+                                                    .push(self.generate_message(&id))
+                                                    .build(),
+                                            )
+                                            .components(|components| components)
                                     } else {
                                         message.content(format!(
                                             "Choose your weapon\n{}/{} players chose",
