@@ -201,6 +201,7 @@ impl Handler {
                     points
                         .into_iter()
                         .sorted_by_key(|user| user.1)
+                        .rev()
                         .into_iter()
                         .map(|user| {
                             MessageBuilder::new()
@@ -477,6 +478,9 @@ impl EventHandler for Handler {
                                                 .push(self.generate_message(&id))
                                                 .build(),
                                         )
+                                        .components(|components| {
+                                            components
+                                        })
                                     } else {
                                         message.content(format!(
                                             "Choose your weapon\n{}/{} players chose",
