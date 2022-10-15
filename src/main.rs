@@ -386,66 +386,69 @@ impl EventHandler for Handler {
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         if cmd.eq(&"start".to_string()) {
-                            self.start_game(&id.clone().split_off(5));
-                            response
-                                .kind(InteractionResponseType::UpdateMessage)
-                                .interaction_response_data(|message| {
-                                    message
-                                        .content(format!(
-                                            "Choose your weapon\n{}/{} players chose",
-                                            self.get_finished_players(&id),
-                                            self.get_player_count(&id)
-                                        ))
-                                        .components(|components| {
-                                            components.create_action_row(|row| {
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Rock")
-                                                        .emoji(ReactionType::Unicode(
-                                                            "🪨".to_string(),
-                                                        ))
-                                                        .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#r:{}", id))
-                                                });
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Paper")
-                                                        .emoji(ReactionType::Unicode(
-                                                            "📄".to_string(),
-                                                        ))
-                                                        .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#p:{}", id))
-                                                });
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Scissors")
-                                                        .emoji(ReactionType::Unicode(
-                                                            "✂️".to_string(),
-                                                        ))
-                                                        .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#s:{}", id))
-                                                });
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Lizard")
-                                                        .emoji(ReactionType::Unicode(
-                                                            "🦎".to_string(),
-                                                        ))
-                                                        .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#l:{}", id))
-                                                });
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Spock")
-                                                        .emoji(ReactionType::Unicode(
-                                                            "🖖".to_string(),
-                                                        ))
-                                                        .style(ButtonStyle::Secondary)
-                                                        .custom_id(&format!("#S:{}", id))
+                            if self.start_game(&id) {
+                                response
+                                    .kind(InteractionResponseType::UpdateMessage)
+                                    .interaction_response_data(|message| {
+                                        message
+                                            .content(format!(
+                                                "Choose your weapon\n{}/{} players chose",
+                                                self.get_finished_players(&id),
+                                                self.get_player_count(&id)
+                                            ))
+                                            .components(|components| {
+                                                components.create_action_row(|row| {
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Rock")
+                                                            .emoji(ReactionType::Unicode(
+                                                                "🪨".to_string(),
+                                                            ))
+                                                            .style(ButtonStyle::Secondary)
+                                                            .custom_id(&format!("#r:{}", id))
+                                                    });
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Paper")
+                                                            .emoji(ReactionType::Unicode(
+                                                                "📄".to_string(),
+                                                            ))
+                                                            .style(ButtonStyle::Secondary)
+                                                            .custom_id(&format!("#p:{}", id))
+                                                    });
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Scissors")
+                                                            .emoji(ReactionType::Unicode(
+                                                                "✂️".to_string(),
+                                                            ))
+                                                            .style(ButtonStyle::Secondary)
+                                                            .custom_id(&format!("#s:{}", id))
+                                                    });
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Lizard")
+                                                            .emoji(ReactionType::Unicode(
+                                                                "🦎".to_string(),
+                                                            ))
+                                                            .style(ButtonStyle::Secondary)
+                                                            .custom_id(&format!("#l:{}", id))
+                                                    });
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Spock")
+                                                            .emoji(ReactionType::Unicode(
+                                                                "🖖".to_string(),
+                                                            ))
+                                                            .style(ButtonStyle::Secondary)
+                                                            .custom_id(&format!("#S:{}", id))
+                                                    })
                                                 })
                                             })
-                                        })
-                                })
+                                    })
+                            } else {
+                                response.kind(InteractionResponseType::UpdateMessage)
+                            }
                         } else if cmd.eq(&"join".to_string()) {
                             if self.add_player(id, user_id) {
                                 response
