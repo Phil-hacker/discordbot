@@ -172,10 +172,10 @@ impl Handler {
         let mut points: HashMap<User, u16> = HashMap::new();
         if let Some(choice) = self.did_all_choose_same(id) {
             return MessageBuilder::new()
-            .push("All players chose ")
-            .push(choice_to_emoji(choice))
-            .push("\nNo one wins")
-            .build()
+                .push("All players chose ")
+                .push(choice_to_emoji(choice))
+                .push("\nNo one wins")
+                .build();
         } else {
             if let Some(battles) = self.get_all_interactions(id) {
                 return MessageBuilder::new()
@@ -230,18 +230,16 @@ impl Handler {
                 .get(id)?
                 .choices
                 .iter()
-                .cartesian_product(games.get(id)?.choices.iter())
+                .collect_vec()
+                .into_iter()
+                .combinations(2)
                 .filter_map(|combination| {
-                    if combination.0 .0 == combination.1 .0 {
-                        None
-                    } else {
-                        Some(Battle::new_ref(
-                            combination.0 .0,
-                            combination.0 .1,
-                            combination.1 .0,
-                            combination.1 .1,
-                        ))
-                    }
+                    Some(Battle::new_ref(
+                        combination.get(0)?.0,
+                        combination.get(0)?.1,
+                        combination.get(1)?.0,
+                        combination.get(1)?.1,
+                    ))
                 })
                 .filter_map(|battle| battle.battle())
                 .dedup()
