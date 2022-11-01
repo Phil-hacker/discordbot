@@ -168,6 +168,12 @@ impl New for Handler {
 }
 
 impl Handler {
+    fn delete_game(&self, id: &String) -> bool {
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            return games.remove(id).is_some();
+        }
+        false
+    }
     fn generate_message(&self, id: &String) -> String {
         let mut points: HashMap<User, u16> = HashMap::new();
         if let Some(choice) = self.did_all_choose_same(id) {
@@ -176,51 +182,49 @@ impl Handler {
                 .push(choice_to_emoji(choice))
                 .push("\nNo one wins")
                 .build();
-        } else {
-            if let Some(battles) = self.get_all_interactions(id) {
-                return MessageBuilder::new()
-                    .push(
-                        battles
-                            .into_iter()
-                            .map(|battle| {
-                                points.insert(
-                                    battle.winner.clone(),
-                                    *points.get(&battle.winner).unwrap_or(&0) + 1,
-                                );
-                                points.insert(
-                                    battle.loser.clone(),
-                                    *points.get(&battle.loser).unwrap_or(&0),
-                                );
-                                MessageBuilder::new()
-                                    .mention(&battle.winner)
-                                    .push(choice_to_emoji(battle.winner_choice))
-                                    .push(" ")
-                                    .push(battle.verb)
-                                    .push(" ")
-                                    .push(choice_to_emoji(battle.loser_choice))
-                                    .mention(&battle.loser)
-                                    .push("\n")
-                                    .build()
-                            })
-                            .collect::<String>(),
-                    )
-                    .push(
-                        points
-                            .into_iter()
-                            .sorted_by_key(|user| user.1)
-                            .rev()
-                            .into_iter()
-                            .map(|user| {
-                                MessageBuilder::new()
-                                    .mention(&user.0)
-                                    .push(format!(" {} points", user.1))
-                                    .push("\n")
-                                    .build()
-                            })
-                            .collect::<String>(),
-                    )
-                    .build();
-            }
+        } else if let Some(battles) = self.get_all_interactions(id) {
+            return MessageBuilder::new()
+                .push(
+                    battles
+                        .into_iter()
+                        .map(|battle| {
+                            points.insert(
+                                battle.winner.clone(),
+                                *points.get(&battle.winner).unwrap_or(&0) + 1,
+                            );
+                            points.insert(
+                                battle.loser.clone(),
+                                *points.get(&battle.loser).unwrap_or(&0),
+                            );
+                            MessageBuilder::new()
+                                .mention(&battle.winner)
+                                .push(choice_to_emoji(battle.winner_choice))
+                                .push(" ")
+                                .push(battle.verb)
+                                .push(" ")
+                                .push(choice_to_emoji(battle.loser_choice))
+                                .mention(&battle.loser)
+                                .push("\n")
+                                .build()
+                        })
+                        .collect::<String>(),
+                )
+                .push(
+                    points
+                        .into_iter()
+                        .sorted_by_key(|user| user.1)
+                        .rev()
+                        .into_iter()
+                        .map(|user| {
+                            MessageBuilder::new()
+                                .mention(&user.0)
+                                .push(format!(" {} points", user.1))
+                                .push("\n")
+                                .build()
+                        })
+                        .collect::<String>(),
+                )
+                .build();
         }
         "".to_string()
     }
@@ -496,7 +500,9 @@ impl EventHandler for Handler {
                                                     .push(self.generate_message(&id))
                                                     .build(),
                                             )
-                                            .components(|components| components)
+                                            .components(|components| components);
+                                        self.delete_game(&id);
+                                        message
                                     } else {
                                         message.content(format!(
                                             "Choose your weapon\n{}/{} players chose",
