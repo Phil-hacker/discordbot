@@ -1,16 +1,11 @@
 extern crate tokio;
 mod choice;
-use crate::choice::Choice;
 mod battleresult;
-use crate::battleresult::BattleResult;
 mod helper;
-use crate::helper::choice_to_emoji;
 mod battle;
-use crate::battle::Battle;
 mod game;
 use crate::game::Game;
 use dotenv::dotenv;
-use itertools::Itertools;
 use rand::random;
 use serenity::async_trait;
 use serenity::model::prelude::ReactionType;
@@ -53,95 +48,17 @@ impl Handler {
         false
     }
     fn generate_message(&self, id: &String) -> String {
-        let mut points: HashMap<User, u16> = HashMap::new();
-        if let Some(choice) = self.did_all_choose_same(id) {
-            return MessageBuilder::new()
-                .push("All players chose ")
-                .push(choice_to_emoji(choice))
-                .push("\nNo one wins")
-                .build();
-        } else if let Some(battles) = self.get_all_interactions(id) {
-            return MessageBuilder::new()
-                .push(
-                    battles
-                        .into_iter()
-                        .map(|battle| {
-                            points.insert(
-                                battle.winner.clone(),
-                                *points.get(&battle.winner).unwrap_or(&0) + 1,
-                            );
-                            points.insert(
-                                battle.loser.clone(),
-                                *points.get(&battle.loser).unwrap_or(&0),
-                            );
-                            battle.to_message()
-                        })
-                        .collect::<String>(),
-                )
-                .push(
-                    points
-                        .into_iter()
-                        .sorted_by_key(|user| user.1)
-                        .rev()
-                        .into_iter()
-                        .map(|user| {
-                            MessageBuilder::new()
-                                .mention(&user.0)
-                                .push(format!(" {} points", user.1))
-                                .push("\n")
-                                .build()
-                        })
-                        .collect::<String>(),
-                )
-                .build();
-        }
-        "".to_string()
-    }
-    fn get_all_interactions(&self, id: &String) -> Option<Vec<BattleResult>> {
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            let battle_results: Vec<BattleResult> = games
-                .get(id)?
-                .choices
-                .iter()
-                .collect_vec()
-                .into_iter()
-                .combinations(2)
-                .filter_map(|combination| {
-                    Some(Battle::new_ref(
-                        combination.get(0)?.0,
-                        combination.get(0)?.1,
-                        combination.get(1)?.0,
-                        combination.get(1)?.1,
-                    ))
-                })
-                .filter_map(|battle| battle.battle())
-                .dedup()
-                .collect();
-            return Some(battle_results);
-        }
-        None
-    }
-    fn did_all_choose_same(&self, id: &String) -> Option<Choice> {
         if let Ok(games) = self.games.lock().as_deref() {
             if let Some(game) = games.get(id) {
-                if game.choices.values().dedup().count() == 1 {
-                    if let Some(v) = game.choices.values().next() {
-                        return Some(*v);
-                    }
-                }
+                return game.generate_message()
             }
         }
-        None
+        "".to_string()
     }
     fn choose(&self, id: &String, user: &User, c: char) {
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(id) {
-                if game.players.contains(user) {
-                    let choice = get_choice_from_char(c);
-                    if let Some(choice) = choice {
-                        game.choices.insert(user.clone(), choice);
-                    }
-                }
+                game.choose(user, c);
             }
         }
     }
@@ -149,7 +66,7 @@ impl Handler {
     fn get_finished_players(&self, id: &String) -> usize {
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get(id) {
-                return game.choices.keys().count();
+                return game.get_finished_players();
             }
         }
         0
@@ -160,7 +77,7 @@ impl Handler {
         }
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(id) {
-                game.started = true;
+                game.start();
                 return true;
             }
         }
@@ -169,7 +86,7 @@ impl Handler {
     fn did_all_choose(&self, id: &String) -> bool {
         if let Ok(games) = self.games.lock().as_deref() {
             if let Some(game) = games.get(id) {
-                return game.players.len() == game.choices.keys().count();
+                return game.did_all_choose();
             }
         }
         false
@@ -177,7 +94,7 @@ impl Handler {
     fn get_player_count(&self, id: &String) -> usize {
         if let Ok(games) = self.games.lock().as_deref() {
             if let Some(game) = games.get(id) {
-                return game.players.len();
+                return game.get_player_count();
             }
         }
         0
@@ -185,10 +102,7 @@ impl Handler {
     fn add_player(&self, id: String, user: &User) -> bool {
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(&id) {
-                if !game.players.contains(user) && !game.started {
-                    game.players.insert(user.clone());
-                    return true;
-                }
+                return game.add_player(user);
             }
         }
         false
@@ -203,16 +117,7 @@ impl Handler {
     }
 }
 
-fn get_choice_from_char(c: char) -> Option<Choice> {
-    match c {
-        'r' => Some(Choice::Rock),
-        'p' => Some(Choice::Paper),
-        's' => Some(Choice::Scissors),
-        'l' => Some(Choice::Lizard),
-        'S' => Some(Choice::Spock),
-        _ => None,
-    }
-}
+
 
 #[async_trait]
 impl EventHandler for Handler {
