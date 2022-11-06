@@ -1,9 +1,9 @@
 extern crate tokio;
-mod choice;
-mod battleresult;
-mod helper;
 mod battle;
+mod battleresult;
+mod choice;
 mod game;
+mod helper;
 use crate::game::Game;
 use dotenv::dotenv;
 use rand::random;
@@ -47,13 +47,17 @@ impl Handler {
         }
         false
     }
-    fn generate_message(&self, id: &String) -> String {
-        if let Ok(games) = self.games.lock().as_deref() {
-            if let Some(game) = games.get(id) {
-                return game.generate_message()
+    fn generate_message(&self, id: &String) -> (String, bool) {
+        if let Ok(games) = self.games.lock().as_deref_mut() {
+            if let Some(game) = games.get_mut(id) {
+                let mut msg = game.battle();
+                if game.is_done() {
+                    msg.push_str("\n Ende der Runde");
+                }
+                return (msg, game.is_done());
             }
         }
-        "".to_string()
+        ("".to_string(), false)
     }
     fn choose(&self, id: &String, user: &User, c: char) {
         if let Ok(games) = self.games.lock().as_deref_mut() {
@@ -62,7 +66,6 @@ impl Handler {
             }
         }
     }
-
     fn get_finished_players(&self, id: &String) -> usize {
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get(id) {
@@ -77,11 +80,27 @@ impl Handler {
         }
         if let Ok(games) = self.games.lock().as_deref_mut() {
             if let Some(game) = games.get_mut(id) {
-                game.start();
+                game.start_round();
                 return true;
             }
         }
         false
+    }
+    fn get_round(&self, id: &String) -> u64 {
+        if let Ok(games) = self.games.lock().as_deref() {
+            if let Some(game) = games.get(id) {
+                return game.get_round();
+            }
+        }
+        1
+    }
+    fn get_rounds(&self, id: &String) -> u64 {
+        if let Ok(games) = self.games.lock().as_deref() {
+            if let Some(game) = games.get(id) {
+                return game.get_rounds();
+            }
+        }
+        1
     }
     fn did_all_choose(&self, id: &String) -> bool {
         if let Ok(games) = self.games.lock().as_deref() {
@@ -99,25 +118,23 @@ impl Handler {
         }
         0
     }
-    fn add_player(&self, id: String, user: &User) -> bool {
+    fn add_player(&self, id: &String, user: &User) -> bool {
         if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get_mut(&id) {
+            if let Some(game) = games.get_mut(id) {
                 return game.add_player(user);
             }
         }
         false
     }
-    fn new_game(&self) -> Option<String> {
+    fn new_game(&self, rounds: u64) -> Option<String> {
         let id = random::<u128>().to_string();
         if let Ok(games) = self.games.lock().as_deref_mut() {
-            games.insert(id.clone(), Game::new(id.clone()));
+            games.insert(id.clone(), Game::new(id.clone(), rounds));
             return Some(id);
         }
         None
     }
 }
-
-
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -125,14 +142,31 @@ impl EventHandler for Handler {
         match interaction {
             Interaction::ApplicationCommand(command) => {
                 let cmd = command.data.name.as_str();
+                let mut options = command.data.options.clone();
                 if cmd == "rockpaperscissors" {
+                    let mut rounds = options
+                        .drain(0..)
+                        .filter_map(|option| {
+                            if option.name == "rounds" {
+                                return option.value?.as_u64();
+                            }
+                            None
+                        })
+                        .sum();
+                    if rounds < 1 {
+                        rounds = 1;
+                    }
+                    println!("{}", &rounds);
                     if let Err(why) = command
                         .create_interaction_response(&ctx.http, |response| {
                             response
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|message| match self.new_game() {
-                                    Some(id) => message
-                                        .content("React to join\nPlayers:\n")
+                                .interaction_response_data(|message| match self.new_game(rounds) {
+                                    Some(id) => {self.add_player(&id, &command.user);message
+                                        .content(format!(
+                                            "Rounds:{}\nPlayers:\n",
+                                            self.get_rounds(&id)
+                                        ))
                                         .components(|components| {
                                             components.create_action_row(|row| {
                                                 row.create_button(|button| {
@@ -146,7 +180,7 @@ impl EventHandler for Handler {
                                                         .custom_id(&format!("start:{}", id))
                                                 })
                                             })
-                                        }),
+                                        })},
                                     None => message.content("Ein Fehler ist aufgetreten"),
                                 })
                         })
@@ -237,7 +271,7 @@ impl EventHandler for Handler {
                                 response.kind(InteractionResponseType::UpdateMessage)
                             }
                         } else if cmd.eq(&"join".to_string()) {
-                            if self.add_player(id, user_id) {
+                            if self.add_player(&id, user_id) {
                                 response
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
@@ -258,18 +292,19 @@ impl EventHandler for Handler {
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
                                     if self.did_all_choose(&id) {
-                                        message
-                                            .content(
-                                                MessageBuilder::new()
-                                                    .push(self.generate_message(&id))
-                                                    .build(),
-                                            )
-                                            .components(|components| components);
-                                        self.delete_game(&id);
+                                        let msg = self.generate_message(&id);
+                                        message.content(MessageBuilder::new().push(msg.0).build());
+                                        if msg.1 {
+                                            message.components(|components| components);
+                                            self.delete_game(&id);
+                                        }
+
                                         message
                                     } else {
                                         message.content(format!(
-                                            "Choose your weapon\n{}/{} players chose",
+                                            "Round {}/{}\nChoose your weapon\n{}/{} players chose",
+                                            self.get_round(&id),
+                                            self.get_rounds(&id),
                                             self.get_finished_players(&id),
                                             self.get_player_count(&id)
                                         ))
@@ -293,6 +328,15 @@ impl EventHandler for Handler {
         let _commands = Command::create_global_application_command(&ctx.http, |command| {
             command
                 .name("rockpaperscissors")
+                .add_option(
+                    serenity::builder::CreateApplicationCommandOption(HashMap::from([]))
+                        .name("rounds")
+                        .description("how many rounds are played")
+                        .kind(serenity::model::prelude::command::CommandOptionType::Integer)
+                        .min_int_value(1)
+                        .max_int_value(15)
+                        .clone(),
+                )
                 .description("Start a new Game")
         })
         .await;

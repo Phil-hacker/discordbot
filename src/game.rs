@@ -11,18 +11,24 @@ use std::collections::{HashMap, HashSet};
 #[derive(PartialEq, Eq)]
 pub struct Game {
     started: bool,
+    round: u64,
+    rounds: u64,
     id: String,
     players: HashSet<User>,
     choices: HashMap<User, Choice>,
+    points: HashMap<User, u64>
 }
 
 impl Game {
-    pub fn new(id: String) -> Self {
+    pub fn new(id: String, rounds: u64) -> Self {
         Game {
             started: false,
+            round: 0,
+            rounds,
             id,
             players: HashSet::new(),
             choices: HashMap::new(),
+            points: HashMap::new(),
         }
     }
     pub fn get_player_count(&self) -> usize {
@@ -31,6 +37,7 @@ impl Game {
     pub fn add_player(&mut self, user: &User) -> bool {
         if !self.players.contains(user) && !self.started {
             self.players.insert(user.clone());
+            self.points.insert(user.clone(),0);
             return true;
         }
         false
@@ -75,8 +82,38 @@ impl Game {
             .dedup()
             .collect()
     }
-    pub fn generate_message(&self) -> String {
-        let mut points: HashMap<User, u16> = HashMap::new();
+    pub fn battle(&mut self) -> String {
+        let msg = self.generate_message();
+        self.choices.drain();
+        self.round += 1;
+        msg
+    }
+    pub fn is_done(&self) -> bool {
+        self.round >= self.rounds
+    }
+    fn add_point(&mut self,user: &User) {
+        self.points.insert(
+            user.clone(),
+            *self.points.get(user).unwrap_or(&0) + 1,
+        );
+    }
+    fn generate_point_list(&self) -> String {
+        self.points
+        .clone()
+        .into_iter()
+        .sorted_by_key(|user| user.1)
+        .rev()
+        .into_iter()
+        .map(|user| {
+            MessageBuilder::new()
+                .mention(&user.0)
+                .push(format!(" {} points", user.1))
+                .push("\n")
+                .build()
+        })
+        .collect::<String>()
+    }
+    fn generate_message(&mut self) -> String {
         if let Some(choice) = self.did_all_choose_same() {
             return MessageBuilder::new()
                 .push("All players chose ")
@@ -89,37 +126,24 @@ impl Game {
                     self.get_all_interactions()
                         .into_iter()
                         .map(|battle| {
-                            points.insert(
-                                battle.winner.clone(),
-                                *points.get(&battle.winner).unwrap_or(&0) + 1,
-                            );
-                            points.insert(
-                                battle.loser.clone(),
-                                *points.get(&battle.loser).unwrap_or(&0),
-                            );
+                            self.add_point(&battle.winner);
                             battle.to_message()
                         })
                         .collect::<String>(),
                 )
                 .push(
-                    points
-                        .into_iter()
-                        .sorted_by_key(|user| user.1)
-                        .rev()
-                        .into_iter()
-                        .map(|user| {
-                            MessageBuilder::new()
-                                .mention(&user.0)
-                                .push(format!(" {} points", user.1))
-                                .push("\n")
-                                .build()
-                        })
-                        .collect::<String>(),
+                    self.generate_point_list()
                 )
                 .build();
         }
     }
-    pub fn start(&mut self) {
+    pub fn start_round(&mut self) {
         self.started = true;
+    }
+    pub fn get_round(&self) -> u64 {
+        self.round + 1
+    }
+    pub fn get_rounds(&self) -> u64 {
+        self.rounds
     }
 }
