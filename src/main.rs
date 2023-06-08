@@ -8,6 +8,7 @@ use crate::game::Game;
 use dotenv::dotenv;
 use rand::random;
 use serenity::async_trait;
+use serenity::builder::CreateComponents;
 use serenity::model::prelude::ReactionType;
 use serenity::model::user::User;
 use serenity::utils::MessageBuilder;
@@ -136,6 +137,56 @@ impl Handler {
     }
 }
 
+fn generate_game_buttons<'a>(components:&'a mut CreateComponents,id: &String) -> &'a mut CreateComponents {
+    components.create_action_row(|row| {
+        row.create_button(|button| {
+            button
+                .label("Rock")
+                .emoji(ReactionType::Unicode(
+                    "🪨".to_string(),
+                ))
+                .style(ButtonStyle::Secondary)
+                .custom_id(&format!("#r:{}", id))
+        });
+        row.create_button(|button| {
+            button
+                .label("Paper")
+                .emoji(ReactionType::Unicode(
+                    "📄".to_string(),
+                ))
+                .style(ButtonStyle::Secondary)
+                .custom_id(&format!("#p:{}", id))
+        });
+        row.create_button(|button| {
+            button
+                .label("Scissors")
+                .emoji(ReactionType::Unicode(
+                    "✂️".to_string(),
+                ))
+                .style(ButtonStyle::Secondary)
+                .custom_id(&format!("#s:{}", id))
+        });
+        row.create_button(|button| {
+            button
+                .label("Lizard")
+                .emoji(ReactionType::Unicode(
+                    "🦎".to_string(),
+                ))
+                .style(ButtonStyle::Secondary)
+                .custom_id(&format!("#l:{}", id))
+        });
+        row.create_button(|button| {
+            button
+                .label("Spock")
+                .emoji(ReactionType::Unicode(
+                    "🖖".to_string(),
+                ))
+                .style(ButtonStyle::Secondary)
+                .custom_id(&format!("#S:{}", id))
+        })
+    })
+}
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -218,53 +269,7 @@ impl EventHandler for Handler {
                                                 self.get_player_count(&id)
                                             ))
                                             .components(|components| {
-                                                components.create_action_row(|row| {
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Rock")
-                                                            .emoji(ReactionType::Unicode(
-                                                                "🪨".to_string(),
-                                                            ))
-                                                            .style(ButtonStyle::Secondary)
-                                                            .custom_id(&format!("#r:{}", id))
-                                                    });
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Paper")
-                                                            .emoji(ReactionType::Unicode(
-                                                                "📄".to_string(),
-                                                            ))
-                                                            .style(ButtonStyle::Secondary)
-                                                            .custom_id(&format!("#p:{}", id))
-                                                    });
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Scissors")
-                                                            .emoji(ReactionType::Unicode(
-                                                                "✂️".to_string(),
-                                                            ))
-                                                            .style(ButtonStyle::Secondary)
-                                                            .custom_id(&format!("#s:{}", id))
-                                                    });
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Lizard")
-                                                            .emoji(ReactionType::Unicode(
-                                                                "🦎".to_string(),
-                                                            ))
-                                                            .style(ButtonStyle::Secondary)
-                                                            .custom_id(&format!("#l:{}", id))
-                                                    });
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Spock")
-                                                            .emoji(ReactionType::Unicode(
-                                                                "🖖".to_string(),
-                                                            ))
-                                                            .style(ButtonStyle::Secondary)
-                                                            .custom_id(&format!("#S:{}", id))
-                                                    })
-                                                })
+                                                generate_game_buttons(components, &id)
                                             })
                                     })
                             } else {
@@ -298,7 +303,6 @@ impl EventHandler for Handler {
                                             message.components(|components| components);
                                             self.delete_game(&id);
                                         }
-
                                         message
                                     } else {
                                         message.content(format!(
