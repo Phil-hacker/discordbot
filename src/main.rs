@@ -300,7 +300,7 @@ impl EventHandler for Handler {
                                         let msg = self.generate_message(&id);
                                         message.content(MessageBuilder::new().push(msg.0).build());
                                         if msg.1 {
-                                            message.components(|components| components);
+                                            message.set_components(CreateComponents(vec![]));
                                             self.delete_game(&id);
                                         }
                                         message
