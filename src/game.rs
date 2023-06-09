@@ -113,13 +113,29 @@ impl Game {
     }
     pub fn generate_message(&mut self) -> String {
         if !self.started {
-            let mut msg =
-                MessageBuilder::new();
+            let mut msg = MessageBuilder::new();
             msg.push(format!("Rounds:{}\nPlayers:\n", self.rounds));
             self.players.iter().for_each(|user| {
                 msg.mention(user).push("\n");
             });
             return msg.build();
+        }
+        if !self.did_all_choose() {
+            let mut msg = MessageBuilder::new();
+            if self.get_rounds() > 1 {
+                msg.push("round ")
+                    .push(self.get_round())
+                    .push("/")
+                    .push(self.get_rounds())
+                    .push("\n");
+            }
+            return msg
+                .push("Choose your weapon\n")
+                .push(self.get_finished_players())
+                .push("/")
+                .push(self.get_player_count())
+                .push(" players chose")
+                .build();
         }
         let msg = {
             if let Some(choice) = self.did_all_choose_same() {

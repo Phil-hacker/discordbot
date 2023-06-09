@@ -226,11 +226,7 @@ impl EventHandler for Handler {
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
                                         message
-                                            .content(format!(
-                                                "Choose your weapon\n{}/{} players chose",
-                                                game.get_finished_players(),
-                                                game.get_player_count()
-                                            ))
+                                            .content(game.generate_message())
                                             .components(|components| {
                                                 generate_game_buttons(components, &id)
                                             })
@@ -263,13 +259,7 @@ impl EventHandler for Handler {
                                         }
                                         message
                                     } else {
-                                        message.content(format!(
-                                            "Round {}/{}\nChoose your weapon\n{}/{} players chose",
-                                            game.get_round(),
-                                            game.get_rounds(),
-                                            game.get_finished_players(),
-                                            game.get_player_count()
-                                        ))
+                                        message.content(game.generate_message())
                                     }
                                 })
                         } else {
