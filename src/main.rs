@@ -10,7 +10,6 @@ use rand::random;
 use serenity::async_trait;
 use serenity::builder::CreateComponents;
 use serenity::model::prelude::ReactionType;
-use serenity::model::user::User;
 use serenity::utils::MessageBuilder;
 use serenity::{
     client::EventHandler,
@@ -23,10 +22,10 @@ use serenity::{
     Client,
 };
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 
 struct Handler {
-    games: Mutex<HashMap<String, Game>>,
+    games: RwLock<HashMap<String, Arc<Mutex<Game>>>>,
 }
 
 trait New {
@@ -36,151 +35,74 @@ trait New {
 impl New for Handler {
     fn new() -> Self {
         Handler {
-            games: Mutex::new(HashMap::new()),
+            games: RwLock::new(HashMap::new()),
         }
     }
 }
 
 impl Handler {
     fn delete_game(&self, id: &String) -> bool {
-        if let Ok(games) = self.games.lock().as_deref_mut() {
+        if let Ok(games) = self.games.write().as_deref_mut() {
             return games.remove(id).is_some();
-        }
-        false
-    }
-    fn generate_message(&self, id: &String) -> (String, bool) {
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get_mut(id) {
-                let mut msg = game.battle();
-                if game.is_done() {
-                    msg.push_str("\n Ende der Runde");
-                }
-                return (msg, game.is_done());
-            }
-        }
-        ("".to_string(), false)
-    }
-    fn choose(&self, id: &String, user: &User, c: char) {
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get_mut(id) {
-                game.choose(user, c);
-            }
-        }
-    }
-    fn get_finished_players(&self, id: &String) -> usize {
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get(id) {
-                return game.get_finished_players();
-            }
-        }
-        0
-    }
-    fn start_game(&self, id: &String) -> bool {
-        if self.get_player_count(id) < 2 {
-            return false;
-        }
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get_mut(id) {
-                game.start_round();
-                return true;
-            }
-        }
-        false
-    }
-    fn get_round(&self, id: &String) -> u64 {
-        if let Ok(games) = self.games.lock().as_deref() {
-            if let Some(game) = games.get(id) {
-                return game.get_round();
-            }
-        }
-        1
-    }
-    fn get_rounds(&self, id: &String) -> u64 {
-        if let Ok(games) = self.games.lock().as_deref() {
-            if let Some(game) = games.get(id) {
-                return game.get_rounds();
-            }
-        }
-        1
-    }
-    fn did_all_choose(&self, id: &String) -> bool {
-        if let Ok(games) = self.games.lock().as_deref() {
-            if let Some(game) = games.get(id) {
-                return game.did_all_choose();
-            }
-        }
-        false
-    }
-    fn get_player_count(&self, id: &String) -> usize {
-        if let Ok(games) = self.games.lock().as_deref() {
-            if let Some(game) = games.get(id) {
-                return game.get_player_count();
-            }
-        }
-        0
-    }
-    fn add_player(&self, id: &String, user: &User) -> bool {
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            if let Some(game) = games.get_mut(id) {
-                return game.add_player(user);
-            }
         }
         false
     }
     fn new_game(&self, rounds: u64) -> Option<String> {
         let id = random::<u128>().to_string();
-        if let Ok(games) = self.games.lock().as_deref_mut() {
-            games.insert(id.clone(), Game::new(id.clone(), rounds));
+        if let Ok(games) = self.games.write().as_deref_mut() {
+            games.insert(
+                id.clone(),
+                Arc::new(Mutex::new(Game::new(id.clone(), rounds))),
+            );
             return Some(id);
+        }
+        None
+    }
+    fn get_game(&self, id: &String) -> Option<Arc<Mutex<Game>>> {
+        if let Ok(games) = self.games.read() {
+            return Some(games.get(id)?.to_owned());
         }
         None
     }
 }
 
-fn generate_game_buttons<'a>(components:&'a mut CreateComponents,id: &String) -> &'a mut CreateComponents {
+fn generate_game_buttons<'a>(
+    components: &'a mut CreateComponents,
+    id: &String,
+) -> &'a mut CreateComponents {
     components.create_action_row(|row| {
         row.create_button(|button| {
             button
                 .label("Rock")
-                .emoji(ReactionType::Unicode(
-                    "🪨".to_string(),
-                ))
+                .emoji(ReactionType::Unicode("🪨".to_string()))
                 .style(ButtonStyle::Secondary)
                 .custom_id(&format!("#r:{}", id))
         });
         row.create_button(|button| {
             button
                 .label("Paper")
-                .emoji(ReactionType::Unicode(
-                    "📄".to_string(),
-                ))
+                .emoji(ReactionType::Unicode("📄".to_string()))
                 .style(ButtonStyle::Secondary)
                 .custom_id(&format!("#p:{}", id))
         });
         row.create_button(|button| {
             button
                 .label("Scissors")
-                .emoji(ReactionType::Unicode(
-                    "✂️".to_string(),
-                ))
+                .emoji(ReactionType::Unicode("✂️".to_string()))
                 .style(ButtonStyle::Secondary)
                 .custom_id(&format!("#s:{}", id))
         });
         row.create_button(|button| {
             button
                 .label("Lizard")
-                .emoji(ReactionType::Unicode(
-                    "🦎".to_string(),
-                ))
+                .emoji(ReactionType::Unicode("🦎".to_string()))
                 .style(ButtonStyle::Secondary)
                 .custom_id(&format!("#l:{}", id))
         });
         row.create_button(|button| {
             button
                 .label("Spock")
-                .emoji(ReactionType::Unicode(
-                    "🖖".to_string(),
-                ))
+                .emoji(ReactionType::Unicode("🖖".to_string()))
                 .style(ButtonStyle::Secondary)
                 .custom_id(&format!("#S:{}", id))
         })
@@ -213,25 +135,35 @@ impl EventHandler for Handler {
                             response
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
                                 .interaction_response_data(|message| match self.new_game(rounds) {
-                                    Some(id) => {self.add_player(&id, &command.user);message
-                                        .content(format!(
-                                            "Rounds:{}\nPlayers:\n",
-                                            self.get_rounds(&id)
-                                        ))
-                                        .components(|components| {
-                                            components.create_action_row(|row| {
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Join")
-                                                        .custom_id(&format!("join:{}", id))
-                                                });
-                                                row.create_button(|button| {
-                                                    button
-                                                        .label("Start")
-                                                        .custom_id(&format!("start:{}", id))
+                                    Some(id) => {
+                                        self.get_game(&id)
+                                            .unwrap()
+                                            .lock()
+                                            .unwrap()
+                                            .add_player(&command.user);
+                                        message
+                                            .content(
+                                                MessageBuilder::new()
+                                                    .push(format!("Rounds:{}\nPlayers:\n", rounds,))
+                                                    .mention(&command.user)
+                                                    .build(),
+                                            )
+                                            .components(|components| {
+                                                components.create_action_row(|row| {
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Join")
+                                                            .custom_id(&format!("join:{}", id))
+                                                    });
+                                                    row.create_button(|button| {
+                                                        button
+                                                            .label("Start")
+                                                            .custom_id(&format!("start:{}", id))
+                                                    })
                                                 })
-                                            })
-                                        })},
+                                            });
+                                        return message;
+                                    }
                                     None => message.content("Ein Fehler ist aufgetreten"),
                                 })
                         })
@@ -257,16 +189,19 @@ impl EventHandler for Handler {
                 let content = component.message.content.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
+                        let game_arc = self.get_game(&id).unwrap();
+                        let mut game = game_arc.lock().unwrap();
                         if cmd.eq(&"start".to_string()) {
-                            if self.start_game(&id) {
+                            if game.get_player_count() >= 2 {
+                                game.start_round();
                                 response
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
                                         message
                                             .content(format!(
                                                 "Choose your weapon\n{}/{} players chose",
-                                                self.get_finished_players(&id),
-                                                self.get_player_count(&id)
+                                                game.get_finished_players(),
+                                                game.get_player_count()
                                             ))
                                             .components(|components| {
                                                 generate_game_buttons(components, &id)
@@ -276,7 +211,7 @@ impl EventHandler for Handler {
                                 response.kind(InteractionResponseType::UpdateMessage)
                             }
                         } else if cmd.eq(&"join".to_string()) {
-                            if self.add_player(&id, user_id) {
+                            if game.add_player(user_id) {
                                 response
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
@@ -292,25 +227,26 @@ impl EventHandler for Handler {
                                 response.kind(InteractionResponseType::UpdateMessage)
                             }
                         } else if cmd.chars().next().unwrap_or('+') == '#' {
-                            self.choose(&id, user_id, cmd.chars().nth(1).unwrap_or(' '));
+                            game.choose(user_id, cmd.chars().nth(1).unwrap_or(' '));
                             response
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
-                                    if self.did_all_choose(&id) {
-                                        let msg = self.generate_message(&id);
-                                        message.content(MessageBuilder::new().push(msg.0).build());
-                                        if msg.1 {
+                                    if game.did_all_choose() {
+                                        let msg = game.battle();
+                                        message.content(MessageBuilder::new().push(msg).build());
+                                        if game.is_done() {
                                             message.set_components(CreateComponents(vec![]));
+                                            drop(game);
                                             self.delete_game(&id);
                                         }
                                         message
                                     } else {
                                         message.content(format!(
                                             "Round {}/{}\nChoose your weapon\n{}/{} players chose",
-                                            self.get_round(&id),
-                                            self.get_rounds(&id),
-                                            self.get_finished_players(&id),
-                                            self.get_player_count(&id)
+                                            game.get_round(),
+                                            game.get_rounds(),
+                                            game.get_finished_players(),
+                                            game.get_player_count()
                                         ))
                                     }
                                 })

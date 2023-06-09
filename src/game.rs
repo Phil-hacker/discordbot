@@ -16,7 +16,7 @@ pub struct Game {
     id: String,
     players: HashSet<User>,
     choices: HashMap<User, Choice>,
-    points: HashMap<User, u64>
+    points: HashMap<User, u64>,
 }
 
 impl Game {
@@ -37,7 +37,7 @@ impl Game {
     pub fn add_player(&mut self, user: &User) -> bool {
         if !self.players.contains(user) && !self.started {
             self.players.insert(user.clone());
-            self.points.insert(user.clone(),0);
+            self.points.insert(user.clone(), 0);
             return true;
         }
         false
@@ -91,51 +91,55 @@ impl Game {
     pub fn is_done(&self) -> bool {
         self.round >= self.rounds
     }
-    fn add_point(&mut self,user: &User) {
-        self.points.insert(
-            user.clone(),
-            *self.points.get(user).unwrap_or(&0) + 1,
-        );
+    fn add_point(&mut self, user: &User) {
+        self.points
+            .insert(user.clone(), *self.points.get(user).unwrap_or(&0) + 1);
     }
     fn generate_point_list(&self) -> String {
         self.points
-        .clone()
-        .into_iter()
-        .sorted_by_key(|user| user.1)
-        .rev()
-        .into_iter()
-        .map(|user| {
-            MessageBuilder::new()
-                .mention(&user.0)
-                .push(format!(" {} points", user.1))
-                .push("\n")
-                .build()
-        })
-        .collect::<String>()
+            .clone()
+            .into_iter()
+            .sorted_by_key(|user| user.1)
+            .rev()
+            .into_iter()
+            .map(|user| {
+                MessageBuilder::new()
+                    .mention(&user.0)
+                    .push(format!(" {} points", user.1))
+                    .push("\n")
+                    .build()
+            })
+            .collect::<String>()
     }
     fn generate_message(&mut self) -> String {
-        if let Some(choice) = self.did_all_choose_same() {
-            return MessageBuilder::new()
-                .push("All players chose ")
-                .push(choice_to_emoji(choice))
-                .push("\nNo one wins")
-                .build();
+        let msg = {
+            if let Some(choice) = self.did_all_choose_same() {
+                MessageBuilder::new()
+                    .push("All players chose ")
+                    .push(choice_to_emoji(choice))
+                    .push("\nNo one wins")
+                    .build()
+            } else {
+                MessageBuilder::new()
+                    .push(
+                        self.get_all_interactions()
+                            .into_iter()
+                            .map(|battle| {
+                                self.add_point(&battle.winner);
+                                battle.to_message()
+                            })
+                            .collect::<String>(),
+                    )
+                    .push(self.generate_point_list())
+                    .build()
+            }
+        };
+        if self.is_done() {
+            return MessageBuilder::new().push(msg).push("\n Ende der Runde").build();
         } else {
-            return MessageBuilder::new()
-                .push(
-                    self.get_all_interactions()
-                        .into_iter()
-                        .map(|battle| {
-                            self.add_point(&battle.winner);
-                            battle.to_message()
-                        })
-                        .collect::<String>(),
-                )
-                .push(
-                    self.generate_point_list()
-                )
-                .build();
+            return MessageBuilder::new().push(msg).build();
         }
+        
     }
     pub fn start_round(&mut self) {
         self.started = true;
