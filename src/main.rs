@@ -143,10 +143,11 @@ impl EventHandler for Handler {
                                             .add_player(&command.user);
                                         message
                                             .content(
-                                                MessageBuilder::new()
-                                                    .push(format!("Rounds:{}\nPlayers:\n", rounds,))
-                                                    .mention(&command.user)
-                                                    .build(),
+                                                self.get_game(&id)
+                                                .unwrap()
+                                                .lock()
+                                                .unwrap()
+                                                .generate_message()
                                             )
                                             .components(|components| {
                                                 components.create_action_row(|row| {
@@ -186,7 +187,6 @@ impl EventHandler for Handler {
                     id = custom_id.1.to_string();
                     cmd = custom_id.0.to_string();
                 }
-                let content = component.message.content.clone();
                 if let Err(why) = component
                     .create_interaction_response(&ctx.http, |response| {
                         let game_arc = self.get_game(&id).unwrap();
@@ -215,13 +215,7 @@ impl EventHandler for Handler {
                                 response
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
-                                        message.content({
-                                            MessageBuilder::new()
-                                                .push(content)
-                                                .push("\n")
-                                                .mention(&component.user)
-                                                .build()
-                                        })
+                                        message.content(game.generate_message())
                                     })
                             } else {
                                 response.kind(InteractionResponseType::UpdateMessage)

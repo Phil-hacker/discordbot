@@ -111,7 +111,16 @@ impl Game {
             })
             .collect::<String>()
     }
-    fn generate_message(&mut self) -> String {
+    pub fn generate_message(&mut self) -> String {
+        if !self.started {
+            let mut msg =
+                MessageBuilder::new();
+            msg.push(format!("Rounds:{}\nPlayers:\n", self.rounds));
+            self.players.iter().for_each(|user| {
+                msg.mention(user).push("\n");
+            });
+            return msg.build();
+        }
         let msg = {
             if let Some(choice) = self.did_all_choose_same() {
                 MessageBuilder::new()
@@ -135,11 +144,13 @@ impl Game {
             }
         };
         if self.is_done() {
-            return MessageBuilder::new().push(msg).push("\n Ende der Runde").build();
+            return MessageBuilder::new()
+                .push(msg)
+                .push("\n Ende der Runde")
+                .build();
         } else {
             return MessageBuilder::new().push(msg).build();
         }
-        
     }
     pub fn start_round(&mut self) {
         self.started = true;
