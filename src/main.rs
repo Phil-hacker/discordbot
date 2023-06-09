@@ -116,62 +116,90 @@ impl EventHandler for Handler {
             Interaction::ApplicationCommand(command) => {
                 let cmd = command.data.name.as_str();
                 let mut options = command.data.options.clone();
-                if cmd == "rockpaperscissors" {
-                    let mut rounds = options
-                        .drain(0..)
-                        .filter_map(|option| {
-                            if option.name == "rounds" {
-                                return option.value?.as_u64();
-                            }
-                            None
-                        })
-                        .sum();
-                    if rounds < 1 {
-                        rounds = 1;
-                    }
-                    println!("{}", &rounds);
-                    if let Err(why) = command
-                        .create_interaction_response(&ctx.http, |response| {
-                            response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|message| match self.new_game(rounds) {
-                                    Some(id) => {
-                                        self.get_game(&id)
-                                            .unwrap()
-                                            .lock()
-                                            .unwrap()
-                                            .add_player(&command.user);
-                                        message
-                                            .content(
+                match cmd {
+                    "rockpaperscissors" => {
+                        let mut rounds = options
+                            .drain(0..)
+                            .filter_map(|option| {
+                                if option.name == "rounds" {
+                                    return option.value?.as_u64();
+                                }
+                                None
+                            })
+                            .sum();
+                        if rounds < 1 {
+                            rounds = 1;
+                        }
+                        println!("{}", &rounds);
+                        if let Err(why) = command
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| {
+                                        match self.new_game(rounds) {
+                                            Some(id) => {
                                                 self.get_game(&id)
-                                                .unwrap()
-                                                .lock()
-                                                .unwrap()
-                                                .generate_message()
-                                            )
-                                            .components(|components| {
-                                                components.create_action_row(|row| {
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Join")
-                                                            .custom_id(&format!("join:{}", id))
+                                                    .unwrap()
+                                                    .lock()
+                                                    .unwrap()
+                                                    .add_player(&command.user);
+                                                message
+                                                    .content(
+                                                        self.get_game(&id)
+                                                            .unwrap()
+                                                            .lock()
+                                                            .unwrap()
+                                                            .generate_message(),
+                                                    )
+                                                    .components(|components| {
+                                                        components.create_action_row(|row| {
+                                                            row.create_button(|button| {
+                                                                button.label("Join").custom_id(
+                                                                    &format!("join:{}", id),
+                                                                )
+                                                            });
+                                                            row.create_button(|button| {
+                                                                button.label("Start").custom_id(
+                                                                    &format!("start:{}", id),
+                                                                )
+                                                            })
+                                                        })
                                                     });
-                                                    row.create_button(|button| {
-                                                        button
-                                                            .label("Start")
-                                                            .custom_id(&format!("start:{}", id))
-                                                    })
-                                                })
-                                            });
-                                        return message;
-                                    }
-                                    None => message.content("Ein Fehler ist aufgetreten"),
-                                })
-                        })
-                        .await
-                    {
-                        println!("Cannot respond to slash command: {}", why);
-                    }
+                                                return message;
+                                            }
+                                            None => message.content("Ein Fehler ist aufgetreten"),
+                                        }
+                                    })
+                            })
+                            .await
+                        {
+                            println!("Cannot respond to slash command: {}", why);
+                        }
+                    },
+                    "rules" => {
+                        if let Err(why) = command.create_interaction_response(&ctx.http, |response| {
+                            response.kind(InteractionResponseType::ChannelMessageWithSource).interaction_response_data(|message| {
+                                message.embed(|embed| {
+                                    embed.description(MessageBuilder::new()
+                                    .push("Paper covers Rock\n")
+                                    .push("Rock crushes Scissors\n")
+                                    .push("Scissors decapitates Lizard\n")
+                                    .push("Lizard poisons Spock\n")
+                                    .push("Spock vaporizes Rock\n")
+                                    .push("Rock crushes Lizard\n")
+                                    .push("Lizard eats Paper\n")
+                                    .push("Paper disproves Spock\n")
+                                    .push("Spock smashes Scissors\n")
+                                    .push("Scissors cuts Paper\n")
+                                    .build())
+                                }
+                                )
+                            })
+                        }).await {
+                            println!("Cannot respond to component {}", why);
+                        };
+                    },
+                    _ => {}
                 }
             }
             Interaction::MessageComponent(component) => {
@@ -272,6 +300,12 @@ impl EventHandler for Handler {
                         .clone(),
                 )
                 .description("Start a new Game")
+        })
+        .await;
+        let _commands = Command::create_global_application_command(&ctx.http, |command| {
+            command
+                .name("rules")
+                .description("Get the rules of the game.")
         })
         .await;
     }
