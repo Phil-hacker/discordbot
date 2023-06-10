@@ -4,6 +4,7 @@ use crate::choice::Choice;
 use crate::helper::choice_to_emoji;
 use crate::helper::get_choice_from_char;
 use itertools::Itertools;
+use serenity::builder::CreateEmbed;
 use serenity::model::user::User;
 use serenity::utils::MessageBuilder;
 use std::collections::{HashMap, HashSet};
@@ -82,11 +83,9 @@ impl Game {
             .dedup()
             .collect()
     }
-    pub fn battle(&mut self) -> String {
-        let msg = self.generate_message();
+    pub fn battle(&mut self) -> () {
         self.choices.drain();
         self.round += 1;
-        msg
     }
     pub fn is_done(&self) -> bool {
         self.round >= self.rounds
@@ -111,14 +110,17 @@ impl Game {
             })
             .collect::<String>()
     }
-    pub fn generate_message(&mut self) -> String {
+    pub fn generate_embed<'a>(&mut self, embed: &'a mut CreateEmbed) -> &'a mut CreateEmbed {
         if !self.started {
+            embed
+                .title("Rock Paper Scissors Lizard Spock")
+                .description(format!("Rounds:{}", self.rounds));
             let mut msg = MessageBuilder::new();
-            msg.push(format!("Rounds:{}\nPlayers:\n", self.rounds));
+            msg.push(format!("Players:\n"));
             self.players.iter().for_each(|user| {
                 msg.mention(user).push("\n");
             });
-            return msg.build();
+            return embed.field("Players", msg.build(), false);
         }
         if !self.did_all_choose() {
             let mut msg = MessageBuilder::new();
@@ -129,44 +131,39 @@ impl Game {
                     .push(self.get_rounds())
                     .push("\n");
             }
-            return msg
+            embed.description(msg
                 .push("Choose your weapon\n")
                 .push(self.get_finished_players())
                 .push("/")
                 .push(self.get_player_count())
                 .push(" players chose")
-                .build();
-        }
-        let msg = {
-            if let Some(choice) = self.did_all_choose_same() {
-                MessageBuilder::new()
-                    .push("All players chose ")
-                    .push(choice_to_emoji(choice))
-                    .push("\nNo one wins")
-                    .build()
-            } else {
-                MessageBuilder::new()
-                    .push(
-                        self.get_all_interactions()
-                            .into_iter()
-                            .map(|battle| {
-                                self.add_point(&battle.winner);
-                                battle.to_message()
-                            })
-                            .collect::<String>(),
-                    )
-                    .push(self.generate_point_list())
-                    .build()
-            }
-        };
-        if self.is_done() {
-            return MessageBuilder::new()
-                .push(msg)
-                .push("\n Ende der Runde")
-                .build();
+                .build());
         } else {
-            return MessageBuilder::new().push(msg).build();
+            let msg = {
+                if let Some(choice) = self.did_all_choose_same() {
+                    MessageBuilder::new()
+                        .push("All players chose ")
+                        .push(choice_to_emoji(choice))
+                        .push("\nNo one wins")
+                        .build()
+                } else {
+                    MessageBuilder::new()
+                        .push(
+                            self.get_all_interactions()
+                                .into_iter()
+                                .map(|battle| {
+                                    self.add_point(&battle.winner);
+                                    battle.to_message()
+                                })
+                                .collect::<String>(),
+                        )
+                        .build()
+                }
+            };
+            embed.field("Choices", msg, false);
         }
+        embed.field("Points", self.generate_point_list(), false);
+        embed.title("Rock Paper Scissors Lizard Spock")
     }
     pub fn start_round(&mut self) {
         self.started = true;

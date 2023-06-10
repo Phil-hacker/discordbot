@@ -144,13 +144,13 @@ impl EventHandler for Handler {
                                                     .unwrap()
                                                     .add_player(&command.user);
                                                 message
-                                                    .content(
+                                                    .embed(|embed| {
                                                         self.get_game(&id)
                                                             .unwrap()
                                                             .lock()
                                                             .unwrap()
-                                                            .generate_message(),
-                                                    )
+                                                            .generate_embed(embed)
+                                                    })
                                                     .components(|components| {
                                                         components.create_action_row(|row| {
                                                             row.create_button(|button| {
@@ -175,30 +175,36 @@ impl EventHandler for Handler {
                         {
                             println!("Cannot respond to slash command: {}", why);
                         }
-                    },
+                    }
                     "rules" => {
-                        if let Err(why) = command.create_interaction_response(&ctx.http, |response| {
-                            response.kind(InteractionResponseType::ChannelMessageWithSource).interaction_response_data(|message| {
-                                message.embed(|embed| {
-                                    embed.description(MessageBuilder::new()
-                                    .push("Paper covers Rock\n")
-                                    .push("Rock crushes Scissors\n")
-                                    .push("Scissors decapitates Lizard\n")
-                                    .push("Lizard poisons Spock\n")
-                                    .push("Spock vaporizes Rock\n")
-                                    .push("Rock crushes Lizard\n")
-                                    .push("Lizard eats Paper\n")
-                                    .push("Paper disproves Spock\n")
-                                    .push("Spock smashes Scissors\n")
-                                    .push("Scissors cuts Paper\n")
-                                    .build())
-                                }
-                                )
+                        if let Err(why) = command
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| {
+                                        message.embed(|embed| {
+                                            embed.description(
+                                                MessageBuilder::new()
+                                                    .push("Paper covers Rock\n")
+                                                    .push("Rock crushes Scissors\n")
+                                                    .push("Scissors decapitates Lizard\n")
+                                                    .push("Lizard poisons Spock\n")
+                                                    .push("Spock vaporizes Rock\n")
+                                                    .push("Rock crushes Lizard\n")
+                                                    .push("Lizard eats Paper\n")
+                                                    .push("Paper disproves Spock\n")
+                                                    .push("Spock smashes Scissors\n")
+                                                    .push("Scissors cuts Paper\n")
+                                                    .build(),
+                                            )
+                                        })
+                                    })
                             })
-                        }).await {
+                            .await
+                        {
                             println!("Cannot respond to component {}", why);
                         };
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -226,7 +232,7 @@ impl EventHandler for Handler {
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
                                         message
-                                            .content(game.generate_message())
+                                            .embed(|embed| game.generate_embed(embed))
                                             .components(|components| {
                                                 generate_game_buttons(components, &id)
                                             })
@@ -239,7 +245,7 @@ impl EventHandler for Handler {
                                 response
                                     .kind(InteractionResponseType::UpdateMessage)
                                     .interaction_response_data(|message| {
-                                        message.content(game.generate_message())
+                                        message.embed(|embed| game.generate_embed(embed))
                                     })
                             } else {
                                 response.kind(InteractionResponseType::UpdateMessage)
@@ -250,8 +256,8 @@ impl EventHandler for Handler {
                                 .kind(InteractionResponseType::UpdateMessage)
                                 .interaction_response_data(|message| {
                                     if game.did_all_choose() {
-                                        let msg = game.battle();
-                                        message.content(MessageBuilder::new().push(msg).build());
+                                        message.embed(|embed| game.generate_embed(embed));
+                                        game.battle();
                                         if game.is_done() {
                                             message.set_components(CreateComponents(vec![]));
                                             drop(game);
@@ -259,7 +265,7 @@ impl EventHandler for Handler {
                                         }
                                         message
                                     } else {
-                                        message.content(game.generate_message())
+                                        message.embed(|embed| game.generate_embed(embed))
                                     }
                                 })
                         } else {
